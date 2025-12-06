@@ -1,0 +1,181 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { useAuthStore } from '../../store/authStore';
+
+export default function LoginScreen() {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const { login, isLoading } = useAuthStore();
+
+  const handleLogin = async () => {
+    if (!username || !password) {
+      Alert.alert('Error', 'Por favor ingresa usuario y contraseña');
+      return;
+    }
+
+    const result = await login(username, password);
+
+    if (!result.success) {
+      Alert.alert(
+        'Error de Login',
+        result.error || 'Usuario o contraseña incorrectos'
+      );
+    }
+  };
+
+  // ... (inside component)
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={styles.header}>
+        <View style={styles.logoContainer}>
+          <Text style={styles.logoIcon}>🚓</Text>
+        </View>
+        <Text style={styles.title}>PROVIAL</Text>
+        <Text style={styles.subtitle}>Brigadas de Carretera</Text>
+      </View>
+
+      <View style={styles.form}>
+        <Text style={styles.label}>Usuario</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="usuario123"
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
+          editable={!isLoading}
+        />
+
+        <Text style={styles.label}>Contraseña</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="••••••••"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!isLoading}
+        />
+
+        <TouchableOpacity
+          style={[styles.button, isLoading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Iniciar Sesión</Text>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.demoUsers}>
+          <Text style={styles.demoTitle}>Usuarios de prueba:</Text>
+          <Text style={styles.demoText}>brigada01 / password123</Text>
+          <Text style={styles.demoText}>brigada02 / password123</Text>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#1e40af',
+  },
+  header: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+  },
+  logoContainer: {
+    width: 100,
+    height: 100,
+    backgroundColor: '#fff',
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  logoIcon: {
+    fontSize: 50,
+  },
+  title: {
+    fontSize: 42,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 18,
+    color: '#93c5fd',
+  },
+  form: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 30,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  input: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+    padding: 15,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  button: {
+    backgroundColor: '#1e40af',
+    borderRadius: 10,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 30,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  demoUsers: {
+    marginTop: 30,
+    padding: 15,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+  },
+  demoTitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  demoText: {
+    fontSize: 12,
+    color: '#374151',
+    marginBottom: 4,
+  },
+});

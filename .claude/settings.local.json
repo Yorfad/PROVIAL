@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill:*)",
+      "Bash(dir:*)",
+      "Bash(mkdir:*)",
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(node -e:*)",
+      "Bash(node check-017.js:*)",
+      "Bash(node run-migrations.js:*)",
+      "Bash(node fix-017.js:*)",
+      "Bash(tasklist:*)",
+      "Bash(node:*)",
+      "Bash(findstr:*)",
+      "Bash(psql:*)",
+      "Bash(timeout 10 bash:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(PGPASSWORD=postgres psql:*)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
