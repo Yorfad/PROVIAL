@@ -24,8 +24,10 @@ const io = new SocketIOServer(server, {
 // Middlewares globales
 app.use(helmet());
 app.use(cors({
-  origin: config.cors.origins,
-  credentials: true,
+  origin: config.env === 'development' ? '*' : config.cors.origins,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: config.env !== 'development',
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

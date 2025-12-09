@@ -1,5 +1,24 @@
 import { useState } from 'react';
 
+// Convertir decimal a fracción para mostrar combustible
+const decimalToFraccion = (decimal: number | null): string => {
+  if (decimal === null || decimal === undefined) return '-';
+
+  // Normalizar a 0-1 si viene como porcentaje (0-100)
+  const valor = decimal > 1 ? decimal / 100 : decimal;
+
+  if (valor <= 0) return 'Reserva';
+  if (valor >= 1) return 'Lleno';
+  if (valor <= 0.125) return '1/8';
+  if (valor <= 0.25) return '1/4';
+  if (valor <= 0.375) return '3/8';
+  if (valor <= 0.5) return '1/2';
+  if (valor <= 0.625) return '5/8';
+  if (valor <= 0.75) return '3/4';
+  if (valor <= 0.875) return '7/8';
+  return 'Lleno';
+};
+
 interface ResumenUnidad {
   unidad_id: number;
   unidad_codigo: string;
@@ -201,15 +220,11 @@ export default function ResumenUnidadesTable({ resumen, onSelectUnidad }: Props)
 
                 {/* Combustible */}
                 <td className="px-4 py-4 whitespace-nowrap">
-                  {unidad.combustible_fraccion || unidad.combustible ? (
-                    <div className="text-sm">
-                      <div className="font-medium text-gray-900">
-                        {unidad.combustible_fraccion || `${Math.round((unidad.combustible || 0) * 100)}%`}
-                      </div>
+                  <div className="text-sm">
+                    <div className="font-medium text-gray-900">
+                      {unidad.combustible_fraccion || decimalToFraccion(unidad.combustible)}
                     </div>
-                  ) : (
-                    <span className="text-sm text-gray-400">-</span>
-                  )}
+                  </div>
                 </td>
 
                 {/* Tripulación */}

@@ -28,6 +28,15 @@ export interface CreatePilotoDTO {
 }
 
 export const PilotoModel = {
+  // Obtener o crear piloto (getOrCreate)
+  async getOrCreate(data: CreatePilotoDTO): Promise<Piloto> {
+    const existing = await this.findByLicencia(data.licencia_numero);
+    if (existing) {
+      return existing;
+    }
+    return this.upsert(data);
+  },
+
   // Buscar por número de licencia
   async findByLicencia(licenciaNumero: bigint): Promise<Piloto | null> {
     return db.oneOrNone(
@@ -70,6 +79,48 @@ export const PilotoModel = {
         data.etnia || null
       ]
     );
+  },
+
+  // Obtener historial de incidentes del piloto
+  async getHistorial(licenciaNumero: bigint): Promise<any[]> {
+    return db.manyOrNone(
+      `SELECT
+        i.*,
+        th.nombre as tipo_hecho_nombre,
+        r.codigo as ruta_codigo,
+        r.nombre as ruta_nombre,
+        iv.estado_piloto,
+        iv.personas_asistidas,
+        v.placa as vehiculo_placa,
+        v.color as vehiculo_color,
+        tv.nombre as vehiculo_tipo,
+        u.nombre_completo as reportado_por
+       FROM incidente i
+       JOIN incidente_vehiculo iv ON i.id = iv.incidente_id
+       JOIN piloto p ON iv.piloto_id = p.id
+       LEFT JOIN vehiculo v ON iv.vehiculo_id = v.id
+       LEFT JOIN tipo_vehiculo tv ON v.tipo_vehiculo_id = tv.id
+       LEFT JOIN tipo_hecho th ON i.tipo_hecho_id = th.id
+       LEFT JOIN ruta r ON i.ruta_id = r.id
+       LEFT JOIN usuario u ON i.created_by = u.id
+       WHERE p.licencia_numero = $1
+       ORDER BY i.created_at DESC`,
+      [licenciaNumero]
+    );
+  },
+
+  // Actualizar datos del piloto
+  async update(licenciaNumero: bigint, data: Partial<CreatePilotoDTO>): Promise<Piloto | null> {
+    const existing = await this.findByLicencia(licenciaNumero);
+    if (!existing) {
+      return null;
+    }
+
+    return this.upsert({
+      licencia_numero: licenciaNumero,
+      nombre: data.nombre || existing.nombre,
+      ...data
+    } as CreatePilotoDTO);
   },
 
   // Buscar pilotos con más incidentes

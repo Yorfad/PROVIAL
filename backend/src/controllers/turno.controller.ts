@@ -1,20 +1,14 @@
 import { Request, Response } from 'express';
 import { TurnoModel } from '../models/turno.model';
+import { db } from '../config/database';
 
-// GET /api/turnos/hoy - Obtener turno de hoy
+// GET /api/turnos/hoy - Obtener turno de hoy con asignaciones de hoy y futuras
 export async function getTurnoHoy(_req: Request, res: Response) {
   try {
     const turno = await TurnoModel.findHoy();
 
-    if (!turno) {
-      return res.status(404).json({
-        error: 'No hay turno programado para hoy',
-        message: 'Contacta al departamento de Operaciones para crear el turno del día'
-      });
-    }
-
-    // Obtener asignaciones
-    const asignaciones = await TurnoModel.getAsignaciones(turno.id);
+    // Obtener TODAS las asignaciones pendientes (hoy y futuras)
+    const asignaciones = await db.any('SELECT * FROM v_asignaciones_pendientes ORDER BY fecha, hora_salida');
 
     return res.json({
       turno,
@@ -23,6 +17,21 @@ export async function getTurnoHoy(_req: Request, res: Response) {
     });
   } catch (error) {
     console.error('Error en getTurnoHoy:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
+// GET /api/turnos/pendientes - Obtener todas las asignaciones pendientes
+export async function getAsignacionesPendientes(_req: Request, res: Response) {
+  try {
+    const asignaciones = await db.any('SELECT * FROM v_asignaciones_pendientes ORDER BY fecha, hora_salida');
+
+    return res.json({
+      asignaciones,
+      total: asignaciones.length
+    });
+  } catch (error) {
+    console.error('Error en getAsignacionesPendientes:', error);
     return res.status(500).json({ error: 'Error interno del servidor' });
   }
 }
@@ -55,7 +64,7 @@ export async function getMiAsignacionHoy(req: Request, res: Response) {
 // POST /api/turnos - Crear turno (solo Operaciones)
 export async function createTurno(req: Request, res: Response) {
   try {
-    const { fecha, observaciones } = req.body;
+    const { fecha, fecha_fin, observaciones } = req.body;
 
     if (!fecha) {
       return res.status(400).json({ error: 'La fecha es requerida' });
@@ -64,14 +73,16 @@ export async function createTurno(req: Request, res: Response) {
     // Verificar que no exista ya un turno para esa fecha
     const existente = await TurnoModel.findByFecha(fecha);
     if (existente) {
-      return res.status(409).json({
-        error: 'Ya existe un turno para esa fecha',
+      // Si existe, lo usamos (las asignaciones se agregarán a este turno)
+      return res.status(200).json({
+        message: 'Turno existente encontrado',
         turno: existente
       });
     }
 
     const turno = await TurnoModel.create({
       fecha,
+      fecha_fin: fecha_fin || null,
       observaciones,
       creado_por: req.user!.userId
     });
@@ -363,6 +374,106 @@ export async function registrarCombustible(req: Request, res: Response) {
     });
   } catch (error) {
     console.error('Error en registrarCombustible:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
+// PUT /api/turnos/asignaciones/:id - Actualizar asignación (solo si no ha salido)
+export async function updateAsignacion(req: Request, res: Response) {
+  try {
+    const { id: asignacionId } = req.params;
+    const {
+      ruta_id,
+      km_inicio,
+      km_final,
+      sentido,
+      acciones,
+      hora_salida,
+      hora_entrada_estimada,
+      tripulacion
+    } = req.body;
+
+    // Verificar que la asignación existe y no ha salido
+    const asignacion = await TurnoModel.getAsignacionById(parseInt(asignacionId));
+
+    if (!asignacion) {
+      return res.status(404).json({ error: 'Asignación no encontrada' });
+    }
+
+    if (asignacion.hora_salida_real) {
+      return res.status(400).json({
+        error: 'No se puede modificar una asignación que ya ha salido',
+        message: 'La unidad ya registró su salida. Solo se pueden editar asignaciones pendientes.'
+      });
+    }
+
+    // Actualizar asignación
+    const asignacionActualizada = await TurnoModel.updateAsignacion(parseInt(asignacionId), {
+      ruta_id,
+      km_inicio,
+      km_final,
+      sentido,
+      acciones,
+      hora_salida,
+      hora_entrada_estimada
+    });
+
+    // Actualizar tripulación si se proporcionó
+    let tripulacionActualizada = [];
+    if (tripulacion && Array.isArray(tripulacion)) {
+      // Eliminar tripulación actual
+      await TurnoModel.deleteTripulacion(parseInt(asignacionId));
+
+      // Agregar nueva tripulación
+      for (const miembro of tripulacion) {
+        const t = await TurnoModel.addTripulacion({
+          asignacion_id: parseInt(asignacionId),
+          usuario_id: miembro.usuario_id,
+          rol_tripulacion: miembro.rol_tripulacion
+        });
+        tripulacionActualizada.push(t);
+      }
+    }
+
+    return res.json({
+      message: 'Asignación actualizada exitosamente',
+      asignacion: asignacionActualizada,
+      tripulacion: tripulacionActualizada.length > 0 ? tripulacionActualizada : undefined
+    });
+  } catch (error) {
+    console.error('Error en updateAsignacion:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
+// DELETE /api/turnos/asignaciones/:id - Eliminar asignación (solo si no ha salido)
+export async function deleteAsignacion(req: Request, res: Response) {
+  try {
+    const { id: asignacionId } = req.params;
+
+    // Verificar que la asignación existe y no ha salido
+    const asignacion = await TurnoModel.getAsignacionById(parseInt(asignacionId));
+
+    if (!asignacion) {
+      return res.status(404).json({ error: 'Asignación no encontrada' });
+    }
+
+    if (asignacion.hora_salida_real) {
+      return res.status(400).json({
+        error: 'No se puede eliminar una asignación que ya ha salido',
+        message: 'La unidad ya registró su salida. Solo se pueden eliminar asignaciones pendientes.'
+      });
+    }
+
+    // Eliminar asignación (la tripulación se elimina por cascade)
+    await TurnoModel.deleteAsignacion(parseInt(asignacionId));
+
+    return res.json({
+      message: 'Asignación eliminada exitosamente',
+      asignacion_id: parseInt(asignacionId)
+    });
+  } catch (error) {
+    console.error('Error en deleteAsignacion:', error);
     return res.status(500).json({ error: 'Error interno del servidor' });
   }
 }

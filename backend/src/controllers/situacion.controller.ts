@@ -12,8 +12,8 @@ import { db } from '../config/database';
  * Obtener IDs de unidades que el usuario puede ver según su sede
  */
 async function getUnidadesPermitidas(userId: number, rol: string): Promise<number[] | null> {
-  // COP y ADMIN pueden ver todas las unidades
-  if (rol === 'COP' || rol === 'ADMIN') {
+  // COP, ADMIN y OPERACIONES pueden ver todas las unidades
+  if (rol === 'COP' || rol === 'ADMIN' || rol === 'OPERACIONES') {
     return null; // null = todas las unidades
   }
 

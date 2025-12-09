@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { API_URL } from '../../constants/config';
 
-import CombustibleSelector from '../../components/CombustibleSelector';
+import FuelSelector from '../../components/FuelSelector';
 
 const TIPOS_INGRESO = [
   { value: 'COMBUSTIBLE', label: 'Combustible', icon: '⛽', color: '#f59e0b' },
@@ -216,8 +216,8 @@ export default function IngresoSedeScreen() {
         </View>
 
         <View style={styles.formGroup}>
-          <CombustibleSelector
-            value={combustibleFraccion || undefined}
+          <FuelSelector
+            value={combustibleFraccion}
             onChange={handleCombustibleChange}
             label="Nivel de Combustible"
           />

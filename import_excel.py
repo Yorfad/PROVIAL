@@ -47,7 +47,7 @@ def generate_sql():
                 username = f"brigada_{chapa.lower().replace(' ', '')}"
                 
                 sql = f"""
-INSERT INTO usuario (username, password_hash, nombre_completo, chapa, rol_id, sede_id, licencia_tipo, licencia_numero, licencia_vencimiento, activo)
+INSERT INTO usuario (username, password_hash, nombre_completo, chapa, rol_id, sede_id, activo)
 VALUES (
     '{username}',
     '$2b$10$rZ7yJhKx5yKv7KjN2QxXqe7X8Y9ZqW0K5L6M4N8P2Q9R3S4T5U6V7',
@@ -55,9 +55,6 @@ VALUES (
     '{chapa}',
     (SELECT id FROM rol WHERE nombre = 'BRIGADA'),
     (SELECT id FROM sede WHERE codigo = 'SEDE-CENTRAL'),
-    '{licencia_tipo}',
-    '{licencia_num}',
-    '{vigencia_str}'::DATE,
     TRUE
 ) ON CONFLICT (username) DO NOTHING;
 """

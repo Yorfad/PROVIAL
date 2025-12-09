@@ -53,20 +53,36 @@ export const PlacaInput: React.FC<PlacaInputProps> = ({
       if (!localExtranjero && PLACA_REGEX.test(value)) {
         setIsChecking(true);
         try {
-          const response = await api.get(`/intelligence/vehiculos-reincidentes/${value}`);
+          // Usar el nuevo endpoint /intelligence/vehiculo/:placa
+          const response = await api.get(`/intelligence/vehiculo/${value}`);
           if (response.data.success && response.data.data) {
-            setVehiculoInfo(response.data.data);
-            setAlertaVisible(true);
+            const historial = response.data.data;
+            // Solo mostrar alerta si tiene incidentes
+            if (historial.total_incidentes > 0) {
+              setVehiculoInfo({
+                id: historial.id,
+                placa: historial.placa,
+                total_incidentes: historial.total_incidentes,
+                nivel_riesgo: historial.nivel_alerta === 'ALTO' ? 5 :
+                             historial.nivel_alerta === 'MEDIO' ? 3 : 1,
+                dias_desde_ultimo_incidente: historial.dias_desde_ultimo_incidente,
+                tipo_vehiculo: historial.tipo_vehiculo,
+                marca: historial.marca,
+                color: historial.color
+              });
+              setAlertaVisible(true);
+            } else {
+              setVehiculoInfo(null);
+              setAlertaVisible(false);
+            }
           } else {
             setVehiculoInfo(null);
             setAlertaVisible(false);
           }
         } catch (error: any) {
-          // Si el vehículo no está en la lista de reincidentes (404), está bien
-          if (error.response?.status === 404) {
-            setVehiculoInfo(null);
-            setAlertaVisible(false);
-          }
+          // Si hay error, simplemente no mostrar alerta
+          setVehiculoInfo(null);
+          setAlertaVisible(false);
           console.log('No se encontró historial para esta placa (normal si es primera vez)');
         } finally {
           setIsChecking(false);

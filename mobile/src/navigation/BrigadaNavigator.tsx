@@ -14,6 +14,8 @@ import IngresoSedeScreen from '../screens/brigada/IngresoSedeScreen';
 import SalidaDeSedeScreen from '../screens/brigada/SalidaDeSedeScreen';
 import FinalizarDiaScreen from '../screens/brigada/FinalizarDiaScreen';
 import RegistroCombustibleScreen from '../screens/brigada/RegistroCombustibleScreen';
+import RelevoScreen from '../screens/brigada/RelevoScreen';
+import ConfiguracionPruebasScreen from '../screens/brigada/ConfiguracionPruebasScreen';
 
 // Placeholder screens - to be implemented
 import { View, Text, StyleSheet } from 'react-native';
@@ -99,6 +101,16 @@ export default function BrigadaNavigator() {
         name="RegistroCombustible"
         component={RegistroCombustibleScreen}
         options={{ title: 'Registro de Combustible', headerShown: true }}
+      />
+      <Stack.Screen
+        name="Relevo"
+        component={RelevoScreen}
+        options={{ title: 'Registrar Relevo', headerShown: true }}
+      />
+      <Stack.Screen
+        name="ConfiguracionPruebas"
+        component={ConfiguracionPruebasScreen}
+        options={{ title: 'Modo de Pruebas', headerShown: true }}
       />
     </Stack.Navigator>
   );

@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     Alert,
     ActivityIndicator,
+    TextInput,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
@@ -19,6 +20,7 @@ import {
     SENTIDOS,
 } from '../../constants/situacionTypes';
 import { useAuthStore } from '../../store/authStore';
+import { useTestMode } from '../../context/TestModeContext';
 import AutoridadSocorroManager, { DetalleAutoridad, DetallesSocorro } from '../../components/AutoridadSocorroManager';
 import ObstruccionManager from '../../components/ObstruccionManager';
 
@@ -32,6 +34,11 @@ import { AjustadorForm } from '../../components/AjustadorForm';
 export default function IncidenteScreen() {
     const navigation = useNavigation();
     const { salidaActiva } = useAuthStore();
+    const { testModeEnabled } = useTestMode();
+
+    // Coordenadas manuales para modo pruebas
+    const [latitudManual, setLatitudManual] = useState('14.6349');
+    const [longitudManual, setLongitudManual] = useState('-90.5069');
 
     // Form Setup
     const { control, handleSubmit, setValue, watch, reset, getValues } = useForm({
@@ -109,9 +116,11 @@ export default function IncidenteScreen() {
             }
         };
         loadPreviousDraft();
-        // Siempre obtener GPS fresco (no del borrador)
-        obtenerUbicacion();
-    }, []);
+        // Solo obtener GPS automatico si NO esta en modo pruebas
+        if (!testModeEnabled) {
+            obtenerUbicacion();
+        }
+    }, [testModeEnabled]);
 
     const obtenerUbicacion = async () => {
         try {
@@ -151,8 +160,12 @@ export default function IncidenteScreen() {
             Alert.alert('Error', 'Debe agregar al menos un vehículo');
             return;
         }
-        if (!coordenadas) {
-            Alert.alert('Error', 'Se requieren coordenadas GPS');
+        // Determinar coordenadas segun modo
+        const latFinal = testModeEnabled ? parseFloat(latitudManual) : coordenadas?.latitud;
+        const lonFinal = testModeEnabled ? parseFloat(longitudManual) : coordenadas?.longitud;
+
+        if (!latFinal || !lonFinal || isNaN(latFinal) || isNaN(lonFinal)) {
+            Alert.alert('Error', 'Se requieren coordenadas GPS válidas');
             return;
         }
 
@@ -173,8 +186,9 @@ export default function IncidenteScreen() {
 
             const incidenteData = {
                 ...data,
-                latitud: coordenadas.latitud,
-                longitud: coordenadas.longitud,
+                latitud: latFinal,
+                longitud: lonFinal,
+                ubicacion_manual: testModeEnabled,
                 unidad_id: salidaActiva.unidad_id,
                 salida_unidad_id: salidaActiva.salida_id,
                 tipo_hecho_id: TIPO_HECHO_IDS[data.tipoIncidente] || 8,
@@ -216,15 +230,43 @@ export default function IncidenteScreen() {
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Ubicación y Tipo</Text>
 
-                            {/* GPS Indicator */}
-                            <View style={[styles.gpsIndicator, coordenadas ? styles.gpsOk : styles.gpsError]}>
-                                <Text style={styles.gpsText}>
-                                    {obteniendoUbicacion ? '📍 Obteniendo...' : coordenadas ? `GPS: ${coordenadas.latitud.toFixed(5)}, ${coordenadas.longitud.toFixed(5)}` : '⚠️ Sin GPS'}
-                                </Text>
-                                {!coordenadas && !obteniendoUbicacion && (
-                                    <Button mode="contained-tonal" onPress={obtenerUbicacion} compact>Reintentar</Button>
-                                )}
-                            </View>
+                            {/* GPS Indicator - Manual en modo pruebas, automatico en produccion */}
+                            {testModeEnabled ? (
+                                <View style={styles.testModeGps}>
+                                    <Text style={styles.testModeLabel}>📍 Coordenadas (Modo Pruebas - Manual)</Text>
+                                    <View style={styles.coordsRow}>
+                                        <View style={styles.coordField}>
+                                            <Text style={styles.coordLabel}>Latitud:</Text>
+                                            <TextInput
+                                                style={styles.coordInput}
+                                                value={latitudManual}
+                                                onChangeText={setLatitudManual}
+                                                placeholder="14.6349"
+                                                keyboardType="decimal-pad"
+                                            />
+                                        </View>
+                                        <View style={styles.coordField}>
+                                            <Text style={styles.coordLabel}>Longitud:</Text>
+                                            <TextInput
+                                                style={styles.coordInput}
+                                                value={longitudManual}
+                                                onChangeText={setLongitudManual}
+                                                placeholder="-90.5069"
+                                                keyboardType="decimal-pad"
+                                            />
+                                        </View>
+                                    </View>
+                                </View>
+                            ) : (
+                                <View style={[styles.gpsIndicator, coordenadas ? styles.gpsOk : styles.gpsError]}>
+                                    <Text style={styles.gpsText}>
+                                        {obteniendoUbicacion ? '📍 Obteniendo...' : coordenadas ? `GPS: ${coordenadas.latitud.toFixed(5)}, ${coordenadas.longitud.toFixed(5)}` : '⚠️ Sin GPS'}
+                                    </Text>
+                                    {!coordenadas && !obteniendoUbicacion && (
+                                        <Button mode="contained-tonal" onPress={obtenerUbicacion} compact>Reintentar</Button>
+                                    )}
+                                </View>
+                            )}
 
                             <Controller
                                 control={control}
@@ -430,4 +472,11 @@ const styles = StyleSheet.create({
     infoLabel: { fontSize: 12, fontWeight: '600', color: '#666', marginBottom: 4 },
     infoValue: { fontSize: 16, fontWeight: 'bold', color: COLORS.text.primary, marginBottom: 4 },
     infoHelper: { fontSize: 11, color: '#999', fontStyle: 'italic' },
+    // Estilos para modo pruebas GPS manual
+    testModeGps: { padding: 12, backgroundColor: '#fff3e0', borderRadius: 8, borderWidth: 1, borderColor: '#ff9800', marginBottom: 10 },
+    testModeLabel: { fontSize: 14, fontWeight: '600', color: '#e65100', marginBottom: 8 },
+    coordsRow: { flexDirection: 'row', gap: 12 },
+    coordField: { flex: 1 },
+    coordLabel: { fontSize: 12, fontWeight: '500', color: '#666', marginBottom: 4 },
+    coordInput: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 10, fontSize: 14 },
 });

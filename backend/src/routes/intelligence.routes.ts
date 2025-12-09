@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import {
+  getVehiculoHistorial,
+  getPilotoHistorial,
+  getTopReincidentes,
+  getStats,
   getVehiculosReincidentes,
   getVehiculoByPlaca,
   getPilotosProblematicos,
@@ -28,8 +32,42 @@ router.get(
   getDashboard
 );
 
+// Estadísticas generales
+router.get(
+  '/stats',
+  authenticate,
+  authorize('COP', 'OPERACIONES', 'MANDOS', 'ADMIN'),
+  getStats
+);
+
+// Top 10 reincidentes (vehículos y pilotos)
+router.get(
+  '/top-reincidentes',
+  authenticate,
+  authorize('COP', 'OPERACIONES', 'MANDOS', 'ADMIN'),
+  getTopReincidentes
+);
+
 // ========================================
-// VEHÍCULOS REINCIDENTES
+// HISTORIAL COMPLETO (para PlacaInput y pantallas de detalle)
+// ========================================
+
+// Historial completo de vehículo por placa (disponible para brigadas)
+router.get(
+  '/vehiculo/:placa',
+  authenticate,
+  getVehiculoHistorial
+);
+
+// Historial completo de piloto por licencia (disponible para brigadas)
+router.get(
+  '/piloto/:licencia',
+  authenticate,
+  getPilotoHistorial
+);
+
+// ========================================
+// VEHÍCULOS REINCIDENTES (vista simplificada)
 // ========================================
 
 // Listar vehículos reincidentes

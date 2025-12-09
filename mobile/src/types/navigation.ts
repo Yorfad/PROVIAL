@@ -37,7 +37,17 @@ export type BrigadaStackParamList = {
   NuevaSituacion: undefined;
   DetalleSituacion: { situacionId: number };
   Bitacora: undefined;
-  ReportarIncidente: undefined;
+  Incidente: undefined;
+  Asistencia: undefined;
+  Emergencia: undefined;
+  SalidaSede: undefined;
+  IniciarSalida: undefined;
+  IngresoSede: undefined;
+  SalidaDeSede: undefined;
+  FinalizarDia: undefined;
+  RegistroCombustible: undefined;
+  Relevo: undefined;
+  ConfiguracionPruebas: undefined;
 };
 
 // ========================================

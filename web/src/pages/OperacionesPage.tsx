@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { operacionesService } from '../services/operaciones.service';
 import { turnosService } from '../services/turnos.service';
 import { useAuthStore } from '../store/authStore';
@@ -15,6 +15,8 @@ import {
   MapPin,
   Clock,
   Sparkles,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 
 export default function OperacionesPage() {
@@ -121,13 +123,27 @@ export default function OperacionesPage() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
               >
                 <Calendar className="w-5 h-5" />
-                Crear Asignación
+                Crear Asignacion
+              </button>
+              <button
+                onClick={() => navigate('/operaciones/brigadas')}
+                className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium flex items-center gap-2"
+              >
+                <Users className="w-5 h-5" />
+                <span className="hidden sm:inline">Brigadas</span>
+              </button>
+              <button
+                onClick={() => navigate('/operaciones/unidades')}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium flex items-center gap-2"
+              >
+                <Truck className="w-5 h-5" />
+                <span className="hidden sm:inline">Unidades</span>
               </button>
               <button
                 onClick={logout}
                 className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                Cerrar Sesión
+                Cerrar Sesion
               </button>
             </div>
           </div>
@@ -187,6 +203,51 @@ export default function OperacionesPage() {
 
 function DashboardView({ data, turnoHoy }: { data: any; turnoHoy?: any }) {
   const resumen = data.resumen;
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // Mutation para eliminar asignación
+  const deleteMutation = useMutation({
+    mutationFn: (asignacionId: number) => turnosService.deleteAsignacion(asignacionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['turno-hoy'] });
+      alert('Asignación eliminada correctamente');
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.error || 'Error al eliminar asignación');
+    },
+  });
+
+  const handleDelete = (asignacion: any) => {
+    if (asignacion.hora_salida_real) {
+      alert('No se puede eliminar una asignacion que ya salio');
+      return;
+    }
+    // La vista usa asignacion_id, no id
+    const asignacionId = asignacion.asignacion_id || asignacion.id;
+    if (!asignacionId) {
+      alert('Error: No se pudo obtener el ID de la asignacion');
+      return;
+    }
+    if (confirm(`¿Eliminar asignacion de unidad ${asignacion.unidad_codigo}?`)) {
+      deleteMutation.mutate(asignacionId);
+    }
+  };
+
+  const handleEdit = (asignacion: any) => {
+    if (asignacion.hora_salida_real) {
+      alert('No se puede editar una asignacion que ya salio');
+      return;
+    }
+    // La vista usa asignacion_id, no id - normalizar
+    const asignacionConId = {
+      ...asignacion,
+      id: asignacion.asignacion_id || asignacion.id
+    };
+    navigate('/operaciones/crear-asignacion', {
+      state: { editMode: true, asignacion: asignacionConId, turnoId: turnoHoy?.turno?.id }
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -346,18 +407,45 @@ function DashboardView({ data, turnoHoy }: { data: any; turnoHoy?: any }) {
           <div className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {turnoHoy.asignaciones.map((asignacion: any) => (
-                <div key={asignacion.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                <div key={asignacion.asignacion_id || asignacion.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Truck className="w-5 h-5 text-blue-600" />
                       <span className="font-semibold text-gray-900">{asignacion.unidad_codigo}</span>
+                      {asignacion.hora_salida_real && (
+                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded">
+                          EN RUTA
+                        </span>
+                      )}
                     </div>
-                    {asignacion.hora_salida && (
-                      <div className="flex items-center gap-1 text-sm text-gray-600">
-                        <Clock className="w-4 h-4" />
-                        {asignacion.hora_salida}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {asignacion.hora_salida && (
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Clock className="w-4 h-4" />
+                          {asignacion.hora_salida}
+                        </div>
+                      )}
+                      {/* Botones de editar/eliminar solo si no ha salido */}
+                      {!asignacion.hora_salida_real && (
+                        <>
+                          <button
+                            onClick={() => handleEdit(asignacion)}
+                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Editar asignación"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(asignacion)}
+                            disabled={deleteMutation.isPending}
+                            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                            title="Eliminar asignación"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* Ruta */}

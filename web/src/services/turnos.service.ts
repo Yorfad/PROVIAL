@@ -43,6 +43,7 @@ export interface TripulacionMiembro {
 
 export interface CreateTurnoDTO {
   fecha: string; // YYYY-MM-DD
+  fecha_fin?: string; // YYYY-MM-DD (para comisiones largas)
   observaciones?: string;
 }
 
@@ -111,6 +112,20 @@ export const turnosService = {
   async getMiAsignacionHoy(): Promise<any> {
     const response = await api.get('/turnos/mi-asignacion-hoy');
     return response.data;
+  },
+
+  // Actualizar asignación
+  async updateAsignacion(
+    asignacionId: number,
+    data: Partial<CreateAsignacionDTO>
+  ): Promise<{ asignacion: AsignacionUnidad; tripulacion: any[] }> {
+    const response = await api.put(`/turnos/asignaciones/${asignacionId}`, data);
+    return response.data;
+  },
+
+  // Eliminar asignación
+  async deleteAsignacion(asignacionId: number): Promise<void> {
+    await api.delete(`/turnos/asignaciones/${asignacionId}`);
   },
 };
 

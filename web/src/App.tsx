@@ -7,6 +7,8 @@ import DashboardPage from './pages/DashboardPage';
 import OperacionesPage from './pages/OperacionesPage';
 import CrearAsignacionPage from './pages/CrearAsignacionPage';
 import GeneradorTurnosPage from './pages/GeneradorTurnosPage';
+import BrigadasPage from './pages/BrigadasPage';
+import UnidadesPage from './pages/UnidadesPage';
 
 // Crear QueryClient
 const queryClient = new QueryClient({
@@ -108,6 +110,22 @@ function App() {
             element={
               <OperacionesRoute>
                 <GeneradorTurnosPage />
+              </OperacionesRoute>
+            }
+          />
+          <Route
+            path="/operaciones/brigadas"
+            element={
+              <OperacionesRoute>
+                <BrigadasPage />
+              </OperacionesRoute>
+            }
+          />
+          <Route
+            path="/operaciones/unidades"
+            element={
+              <OperacionesRoute>
+                <UnidadesPage />
               </OperacionesRoute>
             }
           />

@@ -34,6 +34,25 @@ export interface IncidenteGrua {
 }
 
 export const GruaMasterModel = {
+  // Obtener o crear grúa (getOrCreate)
+  async getOrCreate(data: CreateGruaMasterDTO): Promise<GruaMaster> {
+    // Intentar buscar por placa primero si existe
+    if (data.placa) {
+      const existing = await this.findByPlaca(data.placa);
+      if (existing) {
+        return existing;
+      }
+    }
+
+    // Buscar por nombre y empresa
+    const existing = await this.findByNombreEmpresa(data.nombre, data.empresa || null);
+    if (existing) {
+      return existing;
+    }
+
+    return this.upsert(data);
+  },
+
   // Buscar por ID
   async findById(id: number): Promise<GruaMaster | null> {
     return db.oneOrNone(
@@ -94,6 +113,44 @@ export const GruaMasterModel = {
        ORDER BY nombre ASC`,
       []
     );
+  },
+
+  // Obtener historial de servicios de la grúa
+  async getHistorial(gruaId: number): Promise<any[]> {
+    return db.manyOrNone(
+      `SELECT
+        i.*,
+        th.nombre as tipo_hecho_nombre,
+        r.codigo as ruta_codigo,
+        r.nombre as ruta_nombre,
+        ig.hora_llamada,
+        ig.hora_llegada,
+        ig.destino,
+        ig.costo,
+        u.nombre_completo as reportado_por
+       FROM incidente i
+       JOIN incidente_grua ig ON i.id = ig.incidente_id
+       JOIN grua g ON ig.grua_id = g.id
+       LEFT JOIN tipo_hecho th ON i.tipo_hecho_id = th.id
+       LEFT JOIN ruta r ON i.ruta_id = r.id
+       LEFT JOIN usuario u ON i.created_by = u.id
+       WHERE g.id = $1
+       ORDER BY i.created_at DESC`,
+      [gruaId]
+    );
+  },
+
+  // Actualizar datos de la grúa
+  async update(gruaId: number, data: Partial<CreateGruaMasterDTO>): Promise<GruaMaster | null> {
+    const existing = await this.findById(gruaId);
+    if (!existing) {
+      return null;
+    }
+
+    return this.upsert({
+      nombre: data.nombre || existing.nombre,
+      ...data
+    } as CreateGruaMasterDTO);
   },
 
   // Buscar grúas con más servicios

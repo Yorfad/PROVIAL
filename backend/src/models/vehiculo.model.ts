@@ -62,6 +62,15 @@ export interface Bus {
 }
 
 export const VehiculoModel = {
+  // Obtener o crear vehículo (getOrCreate)
+  async getOrCreate(data: CreateVehiculoDTO): Promise<Vehiculo> {
+    const existing = await this.findByPlaca(data.placa);
+    if (existing) {
+      return existing;
+    }
+    return this.upsert(data);
+  },
+
   // Buscar por placa
   async findByPlaca(placa: string): Promise<Vehiculo | null> {
     return db.oneOrNone(
@@ -115,6 +124,45 @@ export const VehiculoModel = {
         data.tipo_carga || null
       ]
     );
+  },
+
+  // Obtener historial de incidentes del vehículo
+  async getHistorial(placa: string): Promise<any[]> {
+    return db.manyOrNone(
+      `SELECT
+        i.*,
+        th.nombre as tipo_hecho_nombre,
+        r.codigo as ruta_codigo,
+        r.nombre as ruta_nombre,
+        iv.estado_piloto,
+        iv.personas_asistidas,
+        p.nombre as piloto_nombre,
+        p.licencia_numero as piloto_licencia,
+        u.nombre_completo as reportado_por
+       FROM incidente i
+       JOIN incidente_vehiculo iv ON i.id = iv.incidente_id
+       JOIN vehiculo v ON iv.vehiculo_id = v.id
+       LEFT JOIN tipo_hecho th ON i.tipo_hecho_id = th.id
+       LEFT JOIN ruta r ON i.ruta_id = r.id
+       LEFT JOIN piloto p ON iv.piloto_id = p.id
+       LEFT JOIN usuario u ON i.created_by = u.id
+       WHERE v.placa = $1
+       ORDER BY i.created_at DESC`,
+      [placa]
+    );
+  },
+
+  // Actualizar datos del vehículo
+  async update(placa: string, data: Partial<CreateVehiculoDTO>): Promise<Vehiculo | null> {
+    const existing = await this.findByPlaca(placa);
+    if (!existing) {
+      return null;
+    }
+
+    return this.upsert({
+      placa,
+      ...data
+    } as CreateVehiculoDTO);
   },
 
   // Buscar vehículos con más incidentes

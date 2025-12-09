@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { turnosService, geografiaService } from '../services/turnos.service';
 import { operacionesService } from '../services/operaciones.service';
@@ -9,24 +9,47 @@ import { AlertCircle, CheckCircle, Users, Truck, ArrowLeft, Plus, X } from 'luci
 
 export default function CrearAsignacionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
+  // Modo edicion - leer state de navegacion
+  const editState = location.state as { editMode?: boolean; asignacion?: any; turnoId?: number } | null;
+  const isEditMode = editState?.editMode || false;
+  const asignacionEdit = editState?.asignacion;
+  const turnoIdEdit = editState?.turnoId;
+
   // Estado del formulario
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [unidadId, setUnidadId] = useState<number | null>(null);
-  const [rutaId, setRutaId] = useState<number | null>(null);
-  const [kmInicio, setKmInicio] = useState('');
-  const [kmFinal, setKmFinal] = useState('');
-  const [sentido, setSentido] = useState<string>('');
-  const [acciones, setAcciones] = useState('');
-  const [horaSalida, setHoraSalida] = useState('');
-  const [horaEntrada, setHoraEntrada] = useState('');
-  const [combustibleInicial, setCombustibleInicial] = useState('');
-  const [combustibleAsignado, setCombustibleAsignado] = useState('');
+  const [fecha, setFecha] = useState(() => {
+    if (asignacionEdit?.fecha) {
+      return asignacionEdit.fecha.split('T')[0];
+    }
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  });
+  const [esComisionLarga, setEsComisionLarga] = useState(false);
+  const [fechaFin, setFechaFin] = useState('');
+  const [unidadId, setUnidadId] = useState<number | null>(asignacionEdit?.unidad_id || null);
+  const [rutaId, setRutaId] = useState<number | null>(asignacionEdit?.ruta_id || null);
+  const [kmInicio, setKmInicio] = useState(asignacionEdit?.km_inicio?.toString() || '');
+  const [kmFinal, setKmFinal] = useState(asignacionEdit?.km_final?.toString() || '');
+  const [sentido, setSentido] = useState<string>(asignacionEdit?.sentido || '');
+  const [acciones, setAcciones] = useState(asignacionEdit?.acciones || '');
+  const [horaSalida, setHoraSalida] = useState(asignacionEdit?.hora_salida || '');
+  const [horaEntrada, setHoraEntrada] = useState(asignacionEdit?.hora_entrada_estimada || '');
   const [observaciones, setObservaciones] = useState('');
 
-  // Tripulación
-  const [tripulacion, setTripulacion] = useState<TripulacionMiembro[]>([]);
+  // Tripulacion - inicializar con tripulacion existente si es modo edicion
+  const [tripulacion, setTripulacion] = useState<TripulacionMiembro[]>(() => {
+    if (isEditMode && asignacionEdit?.tripulacion) {
+      return asignacionEdit.tripulacion.map((t: any) => ({
+        usuario_id: t.usuario_id,
+        rol_tripulacion: t.rol_tripulacion,
+        presente: true,
+      }));
+    }
+    return [];
+  });
   const [showBrigadaModal, setShowBrigadaModal] = useState(false);
   const [rolSeleccionado, setRolSeleccionado] = useState<'PILOTO' | 'COPILOTO' | 'ACOMPAÑANTE' | null>(null);
 
@@ -48,43 +71,55 @@ export default function CrearAsignacionPage() {
     queryFn: () => geografiaService.getRutas(),
   });
 
-  // Mutation para crear asignación
+  // Mutation para crear asignacion
   const crearAsignacionMutation = useMutation({
     mutationFn: async (asignacion: CreateAsignacionDTO) => {
-      // Primero verificar si existe un turno para esta fecha
       let turno = await turnosService.getTurnoByFecha(fecha);
-
-      // Si no existe, crear el turno
       if (!turno) {
         turno = await turnosService.createTurno({
           fecha,
+          fecha_fin: esComisionLarga && fechaFin ? fechaFin : undefined,
           observaciones: observaciones || undefined,
         });
       }
-
-      // Crear la asignación
       return turnosService.createAsignacion(turno.id, asignacion);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['turno-hoy'] });
       queryClient.invalidateQueries({ queryKey: ['brigadas-disponibles'] });
       queryClient.invalidateQueries({ queryKey: ['unidades-disponibles'] });
-      alert('Asignación creada exitosamente');
+      alert('Asignacion creada exitosamente');
       navigate('/operaciones');
     },
     onError: (error: any) => {
-      alert(`Error al crear asignación: ${error.response?.data?.error || error.message}`);
+      alert(`Error al crear asignacion: ${error.response?.data?.error || error.message}`);
+    },
+  });
+
+  // Mutation para actualizar asignacion
+  const actualizarAsignacionMutation = useMutation({
+    mutationFn: async (data: { asignacionId: number; asignacion: any }) => {
+      return turnosService.updateAsignacion(data.asignacionId, data.asignacion);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['turno-hoy'] });
+      queryClient.invalidateQueries({ queryKey: ['brigadas-disponibles'] });
+      queryClient.invalidateQueries({ queryKey: ['unidades-disponibles'] });
+      alert('Asignacion actualizada exitosamente');
+      navigate('/operaciones');
+    },
+    onError: (error: any) => {
+      alert(`Error al actualizar asignacion: ${error.response?.data?.error || error.message}`);
     },
   });
 
   // Handlers
   const agregarTripulante = (brigada: BrigadaDisponible, rol: 'PILOTO' | 'COPILOTO' | 'ACOMPAÑANTE') => {
     if (tripulacion.some(t => t.usuario_id === brigada.id)) {
-      alert('Esta brigada ya está asignada a este turno');
+      alert('Esta brigada ya esta asignada a este turno');
       return;
     }
 
-    // Solo permitir un PILOTO y un COPILOTO, pero múltiples ACOMPAÑANTES
     if (rol !== 'ACOMPAÑANTE' && tripulacion.some(t => t.rol_tripulacion === rol)) {
       alert(`Ya hay un ${rol} asignado`);
       return;
@@ -115,326 +150,370 @@ export default function CrearAsignacionPage() {
       return;
     }
 
+    if (!rutaId) {
+      alert('Debe seleccionar una ruta');
+      return;
+    }
+
     if (tripulacion.length === 0) {
       alert('Debe asignar al menos un tripulante');
       return;
     }
 
-    const asignacion: CreateAsignacionDTO = {
+    const asignacionData: CreateAsignacionDTO = {
       unidad_id: unidadId,
-      ruta_id: rutaId || undefined,
+      ruta_id: rutaId,
       km_inicio: kmInicio ? parseFloat(kmInicio) : undefined,
       km_final: kmFinal ? parseFloat(kmFinal) : undefined,
       sentido: (sentido as any) || undefined,
       acciones: acciones || undefined,
-      combustible_inicial: combustibleInicial ? parseFloat(combustibleInicial) : undefined,
-      combustible_asignado: combustibleAsignado ? parseFloat(combustibleAsignado) : undefined,
       hora_salida: horaSalida || undefined,
       hora_entrada_estimada: horaEntrada || undefined,
       tripulacion,
     };
 
-    crearAsignacionMutation.mutate(asignacion);
+    if (isEditMode && asignacionEdit?.id) {
+      // Modo edicion - actualizar asignacion existente
+      actualizarAsignacionMutation.mutate({
+        asignacionId: asignacionEdit.id,
+        asignacion: asignacionData,
+      });
+    } else {
+      // Modo creacion - crear nueva asignacion
+      crearAsignacionMutation.mutate(asignacionData);
+    }
   };
 
-  const unidadSeleccionada = unidades.find(u => u.id === unidadId);
   const getBrigadaNombre = (usuarioId: number) => {
     return brigadas.find(b => b.id === usuarioId)?.nombre_completo || 'Desconocido';
   };
 
+  const getBrigadaChapa = (usuarioId: number) => {
+    return brigadas.find(b => b.id === usuarioId)?.chapa || '';
+  };
+
+  const formatRutaNombre = (ruta: { codigo: string; nombre: string }) => {
+    if (ruta.codigo === ruta.nombre) return ruta.nombre;
+    if (ruta.nombre.includes(ruta.codigo)) return ruta.nombre;
+    return `${ruta.codigo} - ${ruta.nombre}`;
+  };
+
+  const getUnidadSeleccionada = () => unidades.find(u => u.id === unidadId);
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="page-container">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/operaciones')}
-              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Nueva Asignación</h1>
-              <p className="text-sm text-gray-600">Asignar unidad y tripulación para un turno</p>
-            </div>
+        <div className="page-header flex items-center gap-4">
+          <button
+            onClick={() => navigate('/operaciones')}
+            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5 text-gray-700" />
+          </button>
+          <div>
+            <h1 className="page-title">{isEditMode ? 'Editar Asignacion' : 'Nueva Asignacion'}</h1>
+            <p className="page-subtitle">
+              {isEditMode
+                ? `Editando asignacion de unidad ${asignacionEdit?.unidad_codigo || ''}`
+                : 'Asignar unidad y tripulacion para un turno'}
+            </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Fecha */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Fecha del Turno</h2>
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className="px-4 py-2 border rounded-lg w-full max-w-xs"
-              required
-            />
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Fecha del Turno</h2>
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="label">Fecha de Salida *</label>
+                  <input
+                    type="date"
+                    value={fecha}
+                    onChange={(e) => setFecha(e.target.value)}
+                    className="input-field"
+                    required
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer pb-2">
+                  <input
+                    type="checkbox"
+                    checked={esComisionLarga}
+                    onChange={(e) => {
+                      setEsComisionLarga(e.target.checked);
+                      if (!e.target.checked) setFechaFin('');
+                    }}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700 font-medium">Comision larga (varios dias)</span>
+                </label>
+
+                {esComisionLarga && (
+                  <div>
+                    <label className="label">Fecha de Regreso</label>
+                    <input
+                      type="date"
+                      value={fechaFin}
+                      onChange={(e) => setFechaFin(e.target.value)}
+                      min={fecha}
+                      className="input-field"
+                    />
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                La asignacion se crea hoy y la unidad sale en la fecha indicada.
+              </p>
+            </div>
           </div>
 
-          {/* Selección de Unidad */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Truck className="h-5 w-5 text-blue-600" />
-              <h2 className="text-lg font-semibold">Unidad</h2>
-            </div>
-
-            {loadingUnidades ? (
-              <p className="text-gray-500">Cargando unidades...</p>
-            ) : unidades.length === 0 ? (
-              <p className="text-gray-500">No hay unidades disponibles para esta fecha</p>
-            ) : (
-              <div className="space-y-3">
-                {unidades.map((unidad) => (
-                  <label
-                    key={unidad.id}
-                    className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${
-                      unidadId === unidad.id
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="unidad"
-                      value={unidad.id}
-                      checked={unidadId === unidad.id}
-                      onChange={() => setUnidadId(unidad.id)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{unidad.codigo}</span>
-                        <span className="text-sm text-gray-600">
-                          {unidad.marca} {unidad.modelo}
-                        </span>
-                        {unidad.disponible ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 text-yellow-500" />
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{unidad.mensaje}</p>
-                      <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                        <span>Combustible: {unidad.combustible_actual}L</span>
-                        <span>Odómetro: {unidad.odometro_actual} km</span>
-                        <span>Turnos último mes: {unidad.turnos_ultimo_mes}</span>
-                      </div>
-                    </div>
-                  </label>
-                ))}
+          {/* Seleccion de Unidad */}
+          <div className="card">
+            <div className="card-body">
+              <div className="flex items-center gap-2 mb-4">
+                <Truck className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-bold text-gray-900">Unidad *</h2>
               </div>
-            )}
+
+              {loadingUnidades ? (
+                <p className="text-gray-600">Cargando unidades...</p>
+              ) : unidades.length === 0 ? (
+                <p className="text-gray-600">No hay unidades disponibles para esta fecha</p>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {unidades.map((unidad) => (
+                    <label
+                      key={unidad.id}
+                      className={`selection-card flex items-start gap-3 ${
+                        unidadId === unidad.id
+                          ? 'selection-card-selected'
+                          : 'selection-card-default'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="unidad"
+                        value={unidad.id}
+                        checked={unidadId === unidad.id}
+                        onChange={() => setUnidadId(unidad.id)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-900">{unidad.codigo}</span>
+                          <span className="text-gray-700 text-sm">
+                            {unidad.marca} {unidad.modelo}
+                          </span>
+                          {unidad.disponible ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-amber-500" />
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{unidad.mensaje}</p>
+                        <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                          <span>Odometro: {unidad.odometro_actual?.toLocaleString()} km</span>
+                          <span>Turnos mes: {unidad.turnos_ultimo_mes}</span>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Detalles de Ruta */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Detalles de Ruta</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ruta (opcional)
-                </label>
-                <select
-                  value={rutaId || ''}
-                  onChange={(e) => setRutaId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full px-4 py-2 border rounded-lg"
-                >
-                  <option value="">Sin ruta específica</option>
-                  {rutas.map((ruta) => (
-                    <option key={ruta.id} value={ruta.id}>
-                      {ruta.codigo} - {ruta.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Detalles de Ruta</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Ruta *</label>
+                  <select
+                    value={rutaId || ''}
+                    onChange={(e) => setRutaId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="select-field"
+                    required
+                  >
+                    <option value="">Seleccionar ruta</option>
+                    {rutas.map((ruta) => (
+                      <option key={ruta.id} value={ruta.id}>
+                        {formatRutaNombre(ruta)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Sentido</label>
-                <select
-                  value={sentido}
-                  onChange={(e) => setSentido(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg"
-                >
-                  <option value="">Seleccionar sentido</option>
-                  <option value="NORTE">Norte</option>
-                  <option value="SUR">Sur</option>
-                  <option value="ORIENTE">Oriente</option>
-                  <option value="OCCIDENTE">Occidente</option>
-                </select>
-              </div>
+                <div>
+                  <label className="label">Sentido</label>
+                  <select
+                    value={sentido}
+                    onChange={(e) => setSentido(e.target.value)}
+                    className="select-field"
+                  >
+                    <option value="">Seleccionar sentido</option>
+                    <option value="NORTE">Norte</option>
+                    <option value="SUR">Sur</option>
+                    <option value="ORIENTE">Oriente</option>
+                    <option value="OCCIDENTE">Occidente</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  KM Inicio
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={kmInicio}
-                  onChange={(e) => setKmInicio(e.target.value)}
-                  placeholder="0.0"
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
-              </div>
+                <div>
+                  <label className="label">KM Inicio</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={kmInicio}
+                    onChange={(e) => setKmInicio(e.target.value)}
+                    placeholder="0.0"
+                    className="input-field"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  KM Final
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={kmFinal}
-                  onChange={(e) => setKmFinal(e.target.value)}
-                  placeholder="0.0"
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
-              </div>
+                <div>
+                  <label className="label">KM Final</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={kmFinal}
+                    onChange={(e) => setKmFinal(e.target.value)}
+                    placeholder="0.0"
+                    className="input-field"
+                  />
+                </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Acciones a realizar
-                </label>
-                <textarea
-                  value={acciones}
-                  onChange={(e) => setAcciones(e.target.value)}
-                  placeholder="Descripción de las acciones..."
-                  rows={3}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
+                <div className="md:col-span-2">
+                  <label className="label">Acciones a realizar</label>
+                  <textarea
+                    value={acciones}
+                    onChange={(e) => setAcciones(e.target.value)}
+                    placeholder="Descripcion de las acciones..."
+                    rows={3}
+                    className="textarea-field"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Horarios y Combustible */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Horarios y Combustible</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Hora de Salida
-                </label>
-                <input
-                  type="time"
-                  value={horaSalida}
-                  onChange={(e) => setHoraSalida(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
-              </div>
+          {/* Horarios */}
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Horarios</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Hora de Salida</label>
+                  <input
+                    type="time"
+                    value={horaSalida}
+                    onChange={(e) => setHoraSalida(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Hora de Entrada Estimada
-                </label>
-                <input
-                  type="time"
-                  value={horaEntrada}
-                  onChange={(e) => setHoraEntrada(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Combustible Inicial (litros)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={combustibleInicial}
-                  onChange={(e) => setCombustibleInicial(e.target.value)}
-                  placeholder={unidadSeleccionada ? `${unidadSeleccionada.combustible_actual}` : '0.0'}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Combustible Asignado (litros)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={combustibleAsignado}
-                  onChange={(e) => setCombustibleAsignado(e.target.value)}
-                  placeholder="0.0"
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
+                <div>
+                  <label className="label">Hora de Entrada Estimada</label>
+                  <input
+                    type="time"
+                    value={horaEntrada}
+                    onChange={(e) => setHoraEntrada(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Tripulación */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-blue-600" />
-                <h2 className="text-lg font-semibold">Tripulación</h2>
+          {/* Tripulacion */}
+          <div className="card">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-bold text-gray-900">Tripulacion *</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRolSeleccionado('PILOTO');
+                    setShowBrigadaModal(true);
+                  }}
+                  className="btn-primary flex items-center gap-2"
+                  disabled={tripulacion.length >= 3}
+                >
+                  <Plus className="h-4 w-4" />
+                  Agregar Tripulante
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setRolSeleccionado('PILOTO');
-                  setShowBrigadaModal(true);
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                disabled={tripulacion.length >= 3}
-              >
-                <Plus className="h-4 w-4" />
-                Agregar Tripulante
-              </button>
-            </div>
 
-            {tripulacion.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
-                No hay tripulantes asignados. Agregue al menos un piloto.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {tripulacion.map((miembro) => {
-                  const brigada = brigadas.find(b => b.id === miembro.usuario_id);
-                  return (
-                    <div
-                      key={miembro.usuario_id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{getBrigadaNombre(miembro.usuario_id)}</p>
-                          {brigada && <span className="text-sm text-gray-500">({brigada.chapa})</span>}
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          {miembro.rol_tripulacion}
-                          {miembro.telefono_contacto && ` • ${miembro.telefono_contacto}`}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removerTripulante(miembro.usuario_id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+              {tripulacion.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600">No hay tripulantes asignados</p>
+                  <p className="text-sm text-gray-500">Agregue al menos un piloto</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {tripulacion.map((miembro) => {
+                    const brigada = brigadas.find(b => b.id === miembro.usuario_id);
+                    return (
+                      <div
+                        key={miembro.usuario_id}
+                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
                       >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`badge ${
+                              miembro.rol_tripulacion === 'PILOTO' ? 'badge-blue' :
+                              miembro.rol_tripulacion === 'COPILOTO' ? 'badge-teal' : 'badge-yellow'
+                            }`}>
+                              {miembro.rol_tripulacion}
+                            </span>
+                            <span className="font-bold text-gray-900">
+                              {getBrigadaNombre(miembro.usuario_id)}
+                            </span>
+                            <span className="text-sm text-gray-500">
+                              ({getBrigadaChapa(miembro.usuario_id)})
+                            </span>
+                          </div>
+                          {miembro.telefono_contacto && (
+                            <p className="text-sm text-gray-600 mt-1">
+                              Tel: {miembro.telefono_contacto}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removerTripulante(miembro.usuario_id)}
+                          className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Observaciones */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Observaciones</h2>
-            <textarea
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
-              placeholder="Observaciones del turno..."
-              rows={4}
-              className="w-full px-4 py-2 border rounded-lg"
-            />
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Observaciones</h2>
+              <textarea
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+                placeholder="Observaciones del turno..."
+                rows={4}
+                className="textarea-field"
+              />
+            </div>
           </div>
 
           {/* Botones */}
@@ -442,16 +521,18 @@ export default function CrearAsignacionPage() {
             <button
               type="button"
               onClick={() => navigate('/operaciones')}
-              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="btn-outline"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              disabled={crearAsignacionMutation.isPending}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              disabled={crearAsignacionMutation.isPending || actualizarAsignacionMutation.isPending}
+              className="btn-primary"
             >
-              {crearAsignacionMutation.isPending ? 'Creando...' : 'Crear Asignación'}
+              {crearAsignacionMutation.isPending || actualizarAsignacionMutation.isPending
+                ? (isEditMode ? 'Guardando...' : 'Creando...')
+                : (isEditMode ? 'Guardar Cambios' : 'Crear Asignacion')}
             </button>
           </div>
         </form>
@@ -459,100 +540,88 @@ export default function CrearAsignacionPage() {
 
       {/* Modal para seleccionar brigada */}
       {showBrigadaModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">
-                  Seleccionar {rolSeleccionado}
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowBrigadaModal(false);
-                    setRolSeleccionado(null);
-                  }}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => setRolSeleccionado('PILOTO')}
-                  className={`px-4 py-2 rounded-lg ${
-                    rolSeleccionado === 'PILOTO'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}
-                  disabled={tripulacion.some(t => t.rol_tripulacion === 'PILOTO')}
-                >
-                  Piloto
-                </button>
-                <button
-                  onClick={() => setRolSeleccionado('COPILOTO')}
-                  className={`px-4 py-2 rounded-lg ${
-                    rolSeleccionado === 'COPILOTO'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}
-                  disabled={tripulacion.some(t => t.rol_tripulacion === 'COPILOTO')}
-                >
-                  Copiloto
-                </button>
-                <button
-                  onClick={() => setRolSeleccionado('ACOMPAÑANTE')}
-                  className={`px-4 py-2 rounded-lg ${
-                    rolSeleccionado === 'ACOMPAÑANTE'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}
-                  disabled={tripulacion.some(t => t.rol_tripulacion === 'ACOMPAÑANTE')}
-                >
-                  Acompañante
-                </button>
+        <div className="modal-overlay">
+          <div className="modal-content flex flex-col" style={{ maxHeight: '80vh' }}>
+            <div className="modal-header">
+              <h3 className="text-lg font-bold text-gray-900">
+                Seleccionar {rolSeleccionado}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowBrigadaModal(false);
+                  setRolSeleccionado(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="h-5 w-5 text-gray-700" />
+              </button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
+              <div className="flex gap-2">
+                {(['PILOTO', 'COPILOTO', 'ACOMPAÑANTE'] as const).map((rol) => (
+                  <button
+                    key={rol}
+                    onClick={() => setRolSeleccionado(rol)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      rolSeleccionado === rol
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                    disabled={rol !== 'ACOMPAÑANTE' && tripulacion.some(t => t.rol_tripulacion === rol)}
+                  >
+                    {rol}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="modal-body flex-1">
               {loadingBrigadas ? (
-                <p className="text-center text-gray-500">Cargando brigadas...</p>
+                <p className="text-center text-gray-600 py-8">Cargando brigadas...</p>
               ) : brigadas.length === 0 ? (
-                <p className="text-center text-gray-500">No hay brigadas disponibles</p>
+                <p className="text-center text-gray-600 py-8">No hay brigadas disponibles</p>
               ) : (
-                <div className="space-y-3">
-                  {brigadas.map((brigada) => (
-                    <button
-                      key={brigada.id}
-                      type="button"
-                      onClick={() => rolSeleccionado && agregarTripulante(brigada, rolSeleccionado)}
-                      disabled={tripulacion.some(t => t.usuario_id === brigada.id)}
-                      className={`w-full text-left p-4 border rounded-lg transition-colors ${
-                        tripulacion.some(t => t.usuario_id === brigada.id)
-                          ? 'opacity-50 cursor-not-allowed bg-gray-100'
-                          : brigada.disponible
-                          ? 'hover:border-blue-500 hover:bg-blue-50'
-                          : 'hover:border-yellow-500 hover:bg-yellow-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{brigada.nombre_completo}</span>
-                        <span className="text-sm text-gray-500">({brigada.chapa})</span>
-                        {brigada.disponible ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 text-yellow-500" />
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{brigada.mensaje}</p>
-                      <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                        {brigada.telefono && <span>Tel: {brigada.telefono}</span>}
-                        <span>Turnos último mes: {brigada.turnos_ultimo_mes}</span>
-                        {brigada.rol_tripulacion_frecuente && (
-                          <span>Rol frecuente: {brigada.rol_tripulacion_frecuente}</span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                <div className="space-y-2">
+                  {brigadas.map((brigada) => {
+                    const yaAsignado = tripulacion.some(t => t.usuario_id === brigada.id);
+                    return (
+                      <button
+                        key={brigada.id}
+                        type="button"
+                        onClick={() => rolSeleccionado && agregarTripulante(brigada, rolSeleccionado)}
+                        disabled={yaAsignado}
+                        className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                          yaAsignado
+                            ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-200'
+                            : brigada.disponible
+                            ? 'hover:border-blue-500 hover:bg-blue-50 border-gray-200 bg-white'
+                            : 'hover:border-amber-500 hover:bg-amber-50 border-gray-200 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-900">{brigada.nombre_completo}</span>
+                          <span className="text-sm text-gray-500">({brigada.chapa})</span>
+                          {brigada.disponible ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-amber-500" />
+                          )}
+                          {yaAsignado && (
+                            <span className="badge badge-gray ml-auto">Ya asignado</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{brigada.mensaje}</p>
+                        <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                          {brigada.telefono && <span>Tel: {brigada.telefono}</span>}
+                          <span>Turnos mes: {brigada.turnos_ultimo_mes}</span>
+                          {brigada.rol_tripulacion_frecuente && (
+                            <span>Rol frecuente: {brigada.rol_tripulacion_frecuente}</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS } from '../constants/colors';
 
 const OPCIONES_COMBUSTIBLE = [
-  { label: 'Vacío', value: 'VACIO', decimal: 0 },
+  { label: 'Reserva', value: 'RESERVA', decimal: 0 },
   { label: '1/8', value: '1/8', decimal: 0.125 },
   { label: '1/4', value: '1/4', decimal: 0.25 },
   { label: '3/8', value: '3/8', decimal: 0.375 },

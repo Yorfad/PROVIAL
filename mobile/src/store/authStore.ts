@@ -265,10 +265,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({ asignacion });
     } catch (error: any) {
-      console.error('Error al obtener asignación:', error);
-      // Si no tiene asignación permanente, es normal
+      // Si no tiene asignación permanente, es normal (404)
       if (error.response?.status === 404) {
         set({ asignacion: null });
+      } else {
+        console.error('Error al obtener asignación:', error);
       }
     }
   },

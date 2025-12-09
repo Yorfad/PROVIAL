@@ -145,6 +145,24 @@ export default function BrigadaHomeScreen() {
     });
   };
 
+  // Formatear fecha de asignacion de forma segura
+  const formatFechaAsignacion = (fecha: string | null | undefined) => {
+    if (!fecha) return 'Fecha no disponible';
+    try {
+      // PostgreSQL puede devolver YYYY-MM-DD o con tiempo
+      const fechaStr = fecha.includes('T') ? fecha.split('T')[0] : fecha;
+      const date = new Date(fechaStr + 'T00:00:00');
+      if (isNaN(date.getTime())) return 'Fecha no disponible';
+      return date.toLocaleDateString('es-GT', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+      });
+    } catch {
+      return 'Fecha no disponible';
+    }
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -157,7 +175,9 @@ export default function BrigadaHomeScreen() {
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.welcomeText}>Bienvenido,</Text>
-            <Text style={styles.userName}>{usuario?.nombre}</Text>
+            <Text style={styles.userName}>
+              {usuario?.chapa || usuario?.username} - {usuario?.nombre?.split(' ')[0] || ''}
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.logoutButton}
@@ -197,90 +217,114 @@ export default function BrigadaHomeScreen() {
         )}
       </View>
 
-      {/* Card de Asignación Permanente */}
-      {asignacion ? (
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Tu Unidad Asignada</Text>
-          </View>
-          <View style={styles.cardContent}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Unidad:</Text>
-              <Text style={styles.infoValue}>{asignacion.unidad_codigo}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Tipo:</Text>
-              <Text style={styles.infoValue}>{asignacion.tipo_unidad}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Tu Rol:</Text>
-              <Text style={styles.infoValue}>{asignacion.rol_tripulacion}</Text>
-            </View>
-          </View>
-        </View>
-      ) : (
-        <View style={[styles.card, styles.warningCard]}>
-          <Text style={styles.warningText}>
-            No tienes unidad asignada
-          </Text>
-        </View>
-      )}
-
-      {/* Card de Asignación del Día (Turno Operacional) */}
+      {/* Card de Asignación Unificada */}
       {loadingAsignacionDia ? (
         <View style={styles.card}>
           <ActivityIndicator size="small" color={COLORS.primary} />
           <Text style={{ textAlign: 'center', color: COLORS.text.secondary, marginTop: 8 }}>
-            Cargando asignación del día...
+            Cargando información de asignación...
           </Text>
         </View>
-      ) : asignacionDia ? (
-        <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: COLORS.info }]}>
+      ) : (asignacion || asignacionDia) ? (
+        <View style={[styles.card, styles.asignacionCard]}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>📋 Turno de Hoy</Text>
-            <View style={[styles.tipoBadge, { backgroundColor: COLORS.info }]}>
-              <Text style={styles.tipoBadgeText}>OPERACIONAL</Text>
-            </View>
+            <Text style={styles.cardTitle}>Mi Asignación</Text>
+            {asignacionDia && (
+              <View style={[styles.tipoBadge, {
+                backgroundColor: asignacionDia.dias_para_salida === 0 ? COLORS.success : COLORS.info
+              }]}>
+                <Text style={styles.tipoBadgeText}>
+                  {asignacionDia.dias_para_salida === 0
+                    ? 'HOY'
+                    : asignacionDia.dias_para_salida === 1
+                    ? 'MAÑANA'
+                    : `EN ${asignacionDia.dias_para_salida} DÍAS`}
+                </Text>
+              </View>
+            )}
           </View>
           <View style={styles.cardContent}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Unidad:</Text>
-              <Text style={styles.infoValue}>{asignacionDia.unidad_codigo}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Rol:</Text>
-              <Text style={styles.infoValue}>{asignacionDia.mi_rol}</Text>
-            </View>
-            {asignacionDia.ruta_codigo && (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Ruta:</Text>
-                <Text style={styles.infoValue}>
-                  {asignacionDia.ruta_codigo} {asignacionDia.sentido ? `(${asignacionDia.sentido})` : ''}
+            {/* Fecha de la asignación */}
+            {asignacionDia?.fecha && asignacionDia.dias_para_salida > 0 && (
+              <View style={[styles.asignacionFullRow, { marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border }]}>
+                <Text style={styles.asignacionItemLabel}>Fecha de Salida</Text>
+                <Text style={[styles.asignacionItemValue, { color: COLORS.primary }]}>
+                  {formatFechaAsignacion(asignacionDia.fecha)}
                 </Text>
               </View>
             )}
-            {asignacionDia.hora_salida && (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Hora Salida:</Text>
-                <Text style={styles.infoValue}>{asignacionDia.hora_salida}</Text>
+
+            {/* Unidad y Tipo */}
+            <View style={styles.asignacionGrid}>
+              <View style={styles.asignacionItem}>
+                <Text style={styles.asignacionItemLabel}>Unidad</Text>
+                <Text style={styles.asignacionItemValue}>
+                  {asignacionDia?.unidad_codigo || asignacion?.unidad_codigo}
+                </Text>
+                {(asignacionDia?.tipo_unidad || asignacion?.tipo_unidad) && (
+                  <Text style={styles.asignacionItemSubtext}>{asignacionDia?.tipo_unidad || asignacion?.tipo_unidad}</Text>
+                )}
+              </View>
+              <View style={styles.asignacionItem}>
+                <Text style={styles.asignacionItemLabel}>Mi Rol</Text>
+                <Text style={styles.asignacionItemValue}>
+                  {asignacionDia?.mi_rol || asignacion?.rol_tripulacion}
+                </Text>
+              </View>
+            </View>
+
+            {/* Ruta y Hora de Salida */}
+            {(asignacionDia?.ruta_codigo || asignacionDia?.hora_salida) && (
+              <View style={styles.asignacionGrid}>
+                {asignacionDia?.ruta_codigo && (
+                  <View style={styles.asignacionItem}>
+                    <Text style={styles.asignacionItemLabel}>Ruta Asignada</Text>
+                    <Text style={styles.asignacionItemValue}>{asignacionDia.ruta_codigo}</Text>
+                    {asignacionDia.sentido && (
+                      <Text style={styles.asignacionItemSubtext}>{asignacionDia.sentido}</Text>
+                    )}
+                  </View>
+                )}
+                {asignacionDia?.hora_salida && (
+                  <View style={styles.asignacionItem}>
+                    <Text style={styles.asignacionItemLabel}>Hora Salida</Text>
+                    <Text style={styles.asignacionItemValue}>{asignacionDia.hora_salida}</Text>
+                  </View>
+                )}
               </View>
             )}
-            {asignacionDia.companeros && asignacionDia.companeros.length > 0 && (
-              <View style={styles.descriptionRow}>
-                <Text style={styles.infoLabel}>Compañeros:</Text>
-                <Text style={styles.descripcionText}>
-                  {asignacionDia.companeros.map((c: any) => `${c.nombre} (${c.rol})`).join(', ')}
-                </Text>
+
+            {/* Recorrido Permitido */}
+            {asignacionDia?.recorrido_permitido && (
+              <View style={styles.asignacionFullRow}>
+                <Text style={styles.asignacionItemLabel}>Recorrido Permitido</Text>
+                <Text style={styles.asignacionItemValue}>{asignacionDia.recorrido_permitido}</Text>
+              </View>
+            )}
+
+            {/* Acciones a Realizar */}
+            {asignacionDia?.acciones && (
+              <View style={styles.asignacionFullRow}>
+                <Text style={styles.asignacionItemLabel}>Acciones a Realizar</Text>
+                <Text style={styles.descripcionText}>{asignacionDia.acciones}</Text>
+              </View>
+            )}
+
+            {/* Compañeros de Brigada */}
+            {asignacionDia?.companeros && asignacionDia.companeros.length > 0 && (
+              <View style={styles.asignacionFullRow}>
+                <Text style={styles.asignacionItemLabel}>Compañeros de Brigada</Text>
+                <View style={styles.companerosList}>
+                  {asignacionDia.companeros.map((c: any, idx: number) => (
+                    <View key={idx} style={styles.companeroItem}>
+                      <Text style={styles.companeroNombre}>{c.nombre}</Text>
+                      <Text style={styles.companeroRol}>{c.rol}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             )}
           </View>
-          {/* Botón de registro de combustible */}
-          <TouchableOpacity
-            style={[styles.cerrarButton, { backgroundColor: COLORS.warning, marginTop: 8 }]}
-            onPress={() => navigation.navigate('RegistroCombustible' as never)}
-          >
-            <Text style={styles.cerrarButtonText}>⛽ Registrar Combustible</Text>
-          </TouchableOpacity>
         </View>
       ) : null}
 
@@ -318,7 +362,7 @@ export default function BrigadaHomeScreen() {
             </Text>
           </View>
         </TouchableOpacity>
-      ) : asignacion ? (
+      ) : (asignacion || asignacionDia) ? (
         <View style={[styles.card, styles.warningCard]}>
           <Text style={styles.warningText}>
             No has iniciado salida hoy
@@ -503,13 +547,27 @@ export default function BrigadaHomeScreen() {
             <Text style={styles.secondaryButtonText}>🔄 Cambio de Ruta</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.actionButton, styles.secondaryButton]}
+            onPress={() => navigation.navigate('Relevo' as never)}
+          >
+            <Text style={styles.secondaryButtonText}>⚡ Registrar Relevo</Text>
+          </TouchableOpacity>
+
           <View style={styles.separator} />
 
           <TouchableOpacity
             style={[styles.actionButton, styles.secondaryButton]}
             onPress={() => navigation.navigate('Bitacora' as never)}
           >
-            <Text style={styles.secondaryButtonText}>Ver Bitácora</Text>
+            <Text style={styles.secondaryButtonText}>📋 Ver Bitácora</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.secondaryButton, { borderColor: '#f97316' }]}
+            onPress={() => navigation.navigate('ConfiguracionPruebas' as never)}
+          >
+            <Text style={[styles.secondaryButtonText, { color: '#f97316' }]}>🧪 Modo de Pruebas</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -559,14 +617,14 @@ export default function BrigadaHomeScreen() {
       )}
 
       {/* Mensaje de ayuda */}
-      {!asignacion && (
+      {!asignacion && !asignacionDia && (
         <View style={styles.helpBox}>
           <Text style={styles.helpText}>
-            No tienes una unidad asignada. Contacta a tu encargado de sede para que te asigne una unidad permanente.
+            No tienes una unidad asignada. Contacta a Operaciones para que te asignen a un turno.
           </Text>
         </View>
       )}
-      {asignacion && !salidaActiva && (
+      {(asignacion || asignacionDia) && !salidaActiva && (
         <View style={styles.helpBox}>
           <Text style={styles.helpText}>
             Debes iniciar una salida para poder reportar situaciones y comenzar tu jornada laboral.
@@ -576,7 +634,7 @@ export default function BrigadaHomeScreen() {
       {ingresoActivo && !ingresoActivo.es_ingreso_final && (
         <View style={styles.helpBox}>
           <Text style={styles.helpText}>
-            Estás en sede. No puedes reportar situaciones hasta que registres la salida de sede.
+            Estas en sede. No puedes reportar situaciones hasta que registres la salida de sede.
           </Text>
         </View>
       )}
@@ -872,5 +930,64 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Estilos para el panel de asignación unificado
+  asignacionCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
+  },
+  asignacionGrid: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  asignacionItem: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  asignacionItemLabel: {
+    fontSize: 12,
+    color: COLORS.text.secondary,
+    fontWeight: '500',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  asignacionItemValue: {
+    fontSize: 16,
+    color: COLORS.text.primary,
+    fontWeight: '700',
+  },
+  asignacionItemSubtext: {
+    fontSize: 12,
+    color: COLORS.text.secondary,
+    marginTop: 2,
+  },
+  asignacionFullRow: {
+    marginBottom: 16,
+  },
+  companerosList: {
+    marginTop: 8,
+  },
+  companeroItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  companeroNombre: {
+    fontSize: 14,
+    color: COLORS.text.primary,
+    fontWeight: '500',
+  },
+  companeroRol: {
+    fontSize: 12,
+    color: COLORS.text.secondary,
+    backgroundColor: COLORS.info + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
 });

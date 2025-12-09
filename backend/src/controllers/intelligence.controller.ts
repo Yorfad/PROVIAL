@@ -2,7 +2,94 @@ import { Request, Response } from 'express';
 import { db } from '../config/database';
 
 // ========================================
-// VEHÍCULOS REINCIDENTES
+// VEHÍCULOS - HISTORIAL COMPLETO
+// ========================================
+
+/**
+ * GET /api/intelligence/vehiculo/:placa
+ * Obtiene el historial completo de un vehículo específico
+ * Incluye todos los incidentes con detalles completos
+ */
+export async function getVehiculoHistorial(req: Request, res: Response) {
+  try {
+    const { placa } = req.params;
+
+    const historial = await db.oneOrNone(
+      `SELECT * FROM mv_vehiculo_historial WHERE UPPER(placa) = UPPER($1)`,
+      [placa]
+    );
+
+    if (!historial) {
+      // Si no hay historial, devolver estructura vacía en lugar de 404
+      return res.json({
+        success: true,
+        data: {
+          placa: placa.toUpperCase(),
+          total_incidentes: 0,
+          nivel_alerta: 'BAJO',
+          incidentes: []
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: historial
+    });
+  } catch (error) {
+    console.error('Error obteniendo historial de vehículo:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error obteniendo historial de vehículo',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+/**
+ * GET /api/intelligence/piloto/:licencia
+ * Obtiene el historial completo de un piloto específico
+ * Incluye incidentes y sanciones
+ */
+export async function getPilotoHistorial(req: Request, res: Response) {
+  try {
+    const { licencia } = req.params;
+
+    const historial = await db.oneOrNone(
+      `SELECT * FROM mv_piloto_historial WHERE licencia_numero = $1`,
+      [licencia]
+    );
+
+    if (!historial) {
+      return res.json({
+        success: true,
+        data: {
+          licencia_numero: licencia,
+          total_incidentes: 0,
+          total_sanciones: 0,
+          nivel_alerta: 'BAJO',
+          incidentes: [],
+          sanciones: []
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: historial
+    });
+  } catch (error) {
+    console.error('Error obteniendo historial de piloto:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error obteniendo historial de piloto',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+// ========================================
+// VEHÍCULOS REINCIDENTES - TOP 10
 // ========================================
 
 export async function getVehiculosReincidentes(req: Request, res: Response) {
@@ -42,7 +129,7 @@ export async function getVehiculosReincidentes(req: Request, res: Response) {
   }
 }
 
-// Buscar vehículo específico por placa
+// Buscar vehículo específico por placa (vista simplificada)
 export async function getVehiculoByPlaca(req: Request, res: Response) {
   try {
     const { placa } = req.params;
@@ -381,6 +468,106 @@ export async function getDashboard(_req: Request, res: Response) {
     res.status(500).json({
       success: false,
       message: 'Error obteniendo dashboard',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+/**
+ * GET /api/intelligence/stats
+ * Obtiene estadísticas generales del sistema de inteligencia
+ */
+export async function getStats(_req: Request, res: Response) {
+  try {
+    const stats = await db.one(`
+      SELECT
+        -- Vehículos
+        (SELECT COUNT(*) FROM vehiculo) as total_vehiculos,
+        (SELECT COUNT(*) FROM mv_vehiculo_historial WHERE nivel_alerta = 'ALTO') as vehiculos_alerta_alta,
+        (SELECT COUNT(*) FROM mv_vehiculo_historial WHERE nivel_alerta = 'MEDIO') as vehiculos_alerta_media,
+        (SELECT COUNT(*) FROM mv_vehiculo_historial WHERE nivel_alerta = 'BAJO') as vehiculos_alerta_baja,
+
+        -- Pilotos
+        (SELECT COUNT(*) FROM piloto) as total_pilotos,
+        (SELECT COUNT(*) FROM mv_piloto_historial WHERE nivel_alerta = 'ALTO') as pilotos_alerta_alta,
+        (SELECT COUNT(*) FROM mv_piloto_historial WHERE nivel_alerta = 'MEDIO') as pilotos_alerta_media,
+        (SELECT COUNT(*) FROM mv_piloto_historial WHERE nivel_alerta = 'BAJO') as pilotos_alerta_baja,
+        (SELECT COUNT(*) FROM mv_piloto_historial WHERE licencia_vencida = true) as pilotos_licencia_vencida,
+
+        -- Incidentes
+        (SELECT COUNT(*) FROM incidente) as total_incidentes,
+        (SELECT COUNT(*) FROM incidente WHERE created_at >= CURRENT_DATE - INTERVAL '30 days') as incidentes_ultimo_mes,
+        (SELECT COUNT(*) FROM incidente WHERE created_at >= CURRENT_DATE - INTERVAL '7 days') as incidentes_ultima_semana,
+
+        -- Sanciones
+        (SELECT COUNT(*) FROM sancion) as total_sanciones,
+        (SELECT COUNT(*) FROM sancion WHERE pagada = false) as sanciones_pendientes,
+        (SELECT COALESCE(SUM(monto), 0) FROM sancion WHERE pagada = false) as monto_pendiente_total
+    `);
+
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('Error obteniendo estadísticas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error obteniendo estadísticas',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+/**
+ * GET /api/intelligence/top-reincidentes
+ * Obtiene top 10 vehículos y pilotos reincidentes
+ */
+export async function getTopReincidentes(_req: Request, res: Response) {
+  try {
+    const [vehiculos, pilotos] = await Promise.all([
+      db.manyOrNone(`
+        SELECT
+          placa,
+          tipo_vehiculo,
+          marca,
+          color,
+          total_incidentes,
+          nivel_alerta,
+          dias_desde_ultimo_incidente
+        FROM mv_vehiculo_historial
+        WHERE total_incidentes > 0
+        ORDER BY total_incidentes DESC, ultimo_incidente DESC
+        LIMIT 10
+      `),
+      db.manyOrNone(`
+        SELECT
+          nombre,
+          licencia_numero,
+          licencia_tipo,
+          total_incidentes,
+          total_sanciones,
+          nivel_alerta,
+          licencia_vencida
+        FROM mv_piloto_historial
+        WHERE total_incidentes > 0 OR total_sanciones > 0
+        ORDER BY (total_incidentes + total_sanciones) DESC, ultimo_incidente DESC
+        LIMIT 10
+      `)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        vehiculos,
+        pilotos
+      }
+    });
+  } catch (error) {
+    console.error('Error obteniendo top reincidentes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error obteniendo top reincidentes',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

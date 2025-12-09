@@ -60,16 +60,19 @@ export interface MiSalidaActiva {
   salida_id: number;
   unidad_id: number;
   unidad_codigo: string;
+  tipo_unidad: string | null;
   estado: string;
   fecha_hora_salida: Date;
   fecha_hora_regreso: Date | null;
   horas_salida: number;
-  ruta_id: number | null; // Added ruta_id
+  ruta_id: number | null;
   ruta_codigo: string | null;
   ruta_nombre: string | null;
   km_inicial: number | null;
   combustible_inicial: number | null;
   tripulacion: any | null;
+  tipo_asignacion: 'PERMANENTE' | 'TURNO';
+  mi_rol: string | null;
   primera_situacion: any | null;
 }
 
@@ -474,7 +477,7 @@ export const SalidaModel = {
        LEFT JOIN departamento d ON s.departamento_id = d.id
        LEFT JOIN municipio m ON s.municipio_id = m.id
        WHERE s.activa = TRUE
-       ORDER BY s.es_sede_central DESC, s.nombre ASC`
+       ORDER BY s.nombre ASC`
     );
   },
 

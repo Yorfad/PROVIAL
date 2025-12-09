@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,19 +12,22 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../store/authStore';
 import { useSituacionesStore } from '../../store/situacionesStore';
+import { useTestMode } from '../../context/TestModeContext';
 import { COLORS } from '../../constants/colors';
 import {
   TipoSituacion,
   SITUACIONES_CONFIG,
   SENTIDOS,
 } from '../../constants/situacionTypes';
-import CombustibleSelector from '../../components/CombustibleSelector';
+import FuelSelector from '../../components/FuelSelector';
 import RutaSelector from '../../components/RutaSelector';
+import * as Location from 'expo-location';
 
 export default function NuevaSituacionScreen() {
   const navigation = useNavigation();
   const { salidaActiva } = useAuthStore();
   const { createSituacion, isLoading } = useSituacionesStore();
+  const { testModeEnabled } = useTestMode();
 
   // Estado del formulario
   const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoSituacion | null>(null);
@@ -36,9 +39,43 @@ export default function NuevaSituacionScreen() {
   const [descripcion, setDescripcion] = useState('');
   const [observaciones, setObservaciones] = useState('');
 
-  // Coordenadas GPS (manual para demo)
+  // Coordenadas GPS
   const [latitud, setLatitud] = useState('14.6349'); // Guatemala City por defecto
   const [longitud, setLongitud] = useState('-90.5069');
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // Obtener ubicacion GPS automaticamente si NO esta en modo pruebas
+  useEffect(() => {
+    if (!testModeEnabled) {
+      obtenerUbicacionGPS();
+    }
+  }, [testModeEnabled]);
+
+  const obtenerUbicacionGPS = async () => {
+    try {
+      setGpsLoading(true);
+      setGpsError(null);
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setGpsError('Permiso de ubicacion denegado');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      setLatitud(location.coords.latitude.toFixed(6));
+      setLongitud(location.coords.longitude.toFixed(6));
+    } catch (error: any) {
+      console.error('[GPS] Error obteniendo ubicacion:', error);
+      setGpsError('No se pudo obtener ubicacion GPS');
+    } finally {
+      setGpsLoading(false);
+    }
+  };
 
   // Ruta (se puede cambiar solo en SALIDA_SEDE o CAMBIO_RUTA)
   const [rutaSeleccionada, setRutaSeleccionada] = useState<number | null>(null);
@@ -115,7 +152,7 @@ export default function NuevaSituacionScreen() {
         kilometraje_unidad: kilometraje ? parseInt(kilometraje, 10) : undefined,
         descripcion: descripcion || undefined,
         observaciones: observaciones || undefined,
-        ubicacion_manual: true, // Modo demo con coordenadas manuales
+        ubicacion_manual: testModeEnabled, // true solo en modo pruebas
       };
 
       await createSituacion(data);
@@ -194,10 +231,10 @@ export default function NuevaSituacionScreen() {
         )}
 
         {/* Mostrar ruta asignada si no puede cambiarla */}
-        {!puedeSeleccionarRuta && asignacion?.ruta_asignada_codigo && (
+        {!puedeSeleccionarRuta && salidaActiva?.ruta_codigo && (
           <View style={styles.infoBox}>
             <Text style={styles.infoLabel}>Ruta Asignada:</Text>
-            <Text style={styles.infoValue}>{asignacion.ruta_asignada_codigo}</Text>
+            <Text style={styles.infoValue}>{salidaActiva.ruta_codigo}</Text>
           </View>
         )}
 
@@ -234,31 +271,60 @@ export default function NuevaSituacionScreen() {
           ))}
         </View>
 
-        <Text style={styles.label}>Coordenadas GPS (Demo)</Text>
-        <View style={styles.coordsContainer}>
-          <View style={styles.coordField}>
-            <Text style={styles.coordLabel}>Latitud:</Text>
-            <TextInput
-              style={styles.coordInput}
-              value={latitud}
-              onChangeText={setLatitud}
-              placeholder="14.6349"
-              keyboardType="decimal-pad"
-              placeholderTextColor={COLORS.text.disabled}
-            />
+        {/* Coordenadas - Manual solo en modo pruebas, automatico en produccion */}
+        {testModeEnabled ? (
+          <>
+            <Text style={styles.label}>Coordenadas GPS (Modo Pruebas - Manual)</Text>
+            <View style={styles.coordsContainer}>
+              <View style={styles.coordField}>
+                <Text style={styles.coordLabel}>Latitud:</Text>
+                <TextInput
+                  style={styles.coordInput}
+                  value={latitud}
+                  onChangeText={setLatitud}
+                  placeholder="14.6349"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={COLORS.text.disabled}
+                />
+              </View>
+              <View style={styles.coordField}>
+                <Text style={styles.coordLabel}>Longitud:</Text>
+                <TextInput
+                  style={styles.coordInput}
+                  value={longitud}
+                  onChangeText={setLongitud}
+                  placeholder="-90.5069"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={COLORS.text.disabled}
+                />
+              </View>
+            </View>
+          </>
+        ) : (
+          <View style={styles.gpsStatusContainer}>
+            <Text style={styles.label}>Ubicacion GPS</Text>
+            {gpsLoading ? (
+              <View style={styles.gpsLoadingContainer}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.gpsLoadingText}>Obteniendo ubicacion...</Text>
+              </View>
+            ) : gpsError ? (
+              <View style={styles.gpsErrorContainer}>
+                <Text style={styles.gpsErrorText}>{gpsError}</Text>
+                <TouchableOpacity onPress={obtenerUbicacionGPS} style={styles.gpsRetryButton}>
+                  <Text style={styles.gpsRetryText}>Reintentar</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.gpsSuccessContainer}>
+                <Text style={styles.gpsSuccessText}>📍 {latitud}, {longitud}</Text>
+                <TouchableOpacity onPress={obtenerUbicacionGPS} style={styles.gpsRefreshButton}>
+                  <Text style={styles.gpsRefreshText}>Actualizar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-          <View style={styles.coordField}>
-            <Text style={styles.coordLabel}>Longitud:</Text>
-            <TextInput
-              style={styles.coordInput}
-              value={longitud}
-              onChangeText={setLongitud}
-              placeholder="-90.5069"
-              keyboardType="decimal-pad"
-              placeholderTextColor={COLORS.text.disabled}
-            />
-          </View>
-        </View>
+        )}
       </View>
     );
   };
@@ -273,8 +339,8 @@ export default function NuevaSituacionScreen() {
         <Text style={styles.sectionTitle}>Información de la Unidad</Text>
 
         {/* Combustible siempre disponible */}
-        <CombustibleSelector
-          value={combustibleFraccion || undefined}
+        <FuelSelector
+          value={combustibleFraccion}
           onChange={handleCombustibleChange}
           label={config.requiereCombustible ? 'Nivel de Combustible *' : 'Nivel de Combustible (Opcional)'}
           required={config.requiereCombustible}
@@ -336,13 +402,13 @@ export default function NuevaSituacionScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Información de asignación */}
-        {asignacion && (
+        {/* Información de salida activa */}
+        {salidaActiva && (
           <View style={styles.headerCard}>
-            <Text style={styles.headerTitle}>Unidad: {asignacion.unidad_codigo}</Text>
-            {asignacion.ruta_asignada_codigo && (
+            <Text style={styles.headerTitle}>Unidad: {salidaActiva.unidad_codigo}</Text>
+            {salidaActiva.ruta_codigo && (
               <Text style={styles.headerSubtitle}>
-                Ruta: {asignacion.ruta_asignada_codigo}
+                Ruta: {salidaActiva.ruta_codigo}
               </Text>
             )}
           </View>
@@ -562,5 +628,67 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 14,
     color: COLORS.text.primary,
+  },
+  gpsStatusContainer: {
+    marginTop: 12,
+  },
+  gpsLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.info + '20',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  gpsLoadingText: {
+    fontSize: 14,
+    color: COLORS.info,
+  },
+  gpsErrorContainer: {
+    backgroundColor: COLORS.danger + '20',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  gpsErrorText: {
+    fontSize: 14,
+    color: COLORS.danger,
+  },
+  gpsRetryButton: {
+    backgroundColor: COLORS.danger,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  gpsRetryText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  gpsSuccessContainer: {
+    backgroundColor: COLORS.success + '20',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  gpsSuccessText: {
+    fontSize: 14,
+    color: COLORS.success,
+    fontWeight: '500',
+  },
+  gpsRefreshButton: {
+    backgroundColor: COLORS.success,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  gpsRefreshText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

@@ -1,0 +1,87 @@
+═══════════════════════════════════════════════════════════════════
+  ✅ SISTEMA MULTI-PC CONFIGURADO EXITOSAMENTE
+═══════════════════════════════════════════════════════════════════
+
+📋 QUÉ SE HIZO:
+
+1. ✅ Creados archivos de configuración para PC 1 y PC 2
+   - backend/.env.pc1 (IP: 172.20.10.4)
+   - backend/.env.pc2 (IP: 192.168.10.105)
+   - mobile/src/constants/config.pc1.ts
+   - mobile/src/constants/config.pc2.ts
+
+2. ✅ Script automático para cambiar entre PCs
+   - switch-pc.ps1 (Windows PowerShell)
+   - switch-pc.sh (Linux/Mac Bash)
+
+3. ✅ Actualizado .gitignore
+   - Templates se suben a Git
+   - Archivos activos se ignoran
+
+4. ✅ Configuración ACTUAL activada: PC 2
+   - IP: 192.168.10.105
+   - API URL: http://192.168.10.105:3001/api
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 CÓMO USAR:
+
+Cambiar a PC 1:
+    .\switch-pc.ps1 1
+
+Cambiar a PC 2:
+    .\switch-pc.ps1 2
+
+Ver PC actual:
+    cat .pc-config
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ IMPORTANTE DESPUÉS DE CAMBIAR DE PC:
+
+1. Reiniciar backend:
+   cd backend
+   npm run dev
+
+2. Reiniciar app móvil con cache limpio:
+   cd mobile
+   npx expo start --clear
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 DOCUMENTACIÓN:
+
+Lee el archivo completo para más detalles:
+    MULTI_PC_SETUP.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 CONFIGURACIONES ACTUALES:
+
+Backend (.env):
+    DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/provial_db
+    REDIS_URL=redis://127.0.0.1:6379
+    PORT=3001
+    PC_IP=192.168.10.105
+
+Mobile (config.ts):
+    API_URL='http://192.168.10.105:3001/api'
+
+Docker (igual en ambas PCs):
+    PostgreSQL: localhost:5433
+    Redis: localhost:6379
+    pgAdmin: localhost:5050
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ TODO LISTO PARA USAR EN PC 2
+
+El backend ya está configurado para tu red 192.168.10.105
+La app móvil se conectará automáticamente a esta IP.
+
+Solo inicia el backend y la app móvil:
+
+    cd backend && npm run dev
+    cd mobile && npx expo start --clear
+
+═══════════════════════════════════════════════════════════════════

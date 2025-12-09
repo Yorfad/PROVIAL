@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { API_URL } from '../../constants/config';
 
-import CombustibleSelector from '../../components/CombustibleSelector';
+import FuelSelector from '../../components/FuelSelector';
 
 export default function FinalizarDiaScreen() {
   const navigation = useNavigation();
@@ -254,8 +254,8 @@ export default function FinalizarDiaScreen() {
         </View>
 
         <View style={styles.formGroup}>
-          <CombustibleSelector
-            value={combustibleFraccion || undefined}
+          <FuelSelector
+            value={combustibleFraccion}
             onChange={handleCombustibleChange}
             label="Combustible Final"
             required

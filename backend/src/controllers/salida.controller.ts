@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { SalidaModel } from '../models/salida.model';
 import { GrupoModel } from '../models/grupo.model';
+import { TurnoModel } from '../models/turno.model';
 
 // ========================================
 // ASIGNACIONES PERMANENTES
@@ -149,6 +150,7 @@ export async function getMiSalidaActiva(req: Request, res: Response) {
 /**
  * POST /api/salidas/iniciar
  * Iniciar salida de mi unidad
+ * Busca primero en asignaciones de turno, luego en asignaciones permanentes
  */
 export async function iniciarSalida(req: Request, res: Response) {
   try {
@@ -156,12 +158,30 @@ export async function iniciarSalida(req: Request, res: Response) {
       return res.status(401).json({ error: 'No autorizado' });
     }
 
-    // Obtener mi unidad
+    // PRIMERO: Buscar en asignaciones de turno (sistema nuevo)
+    const asignacionTurno = await TurnoModel.getMiAsignacionHoy(req.user.userId);
+
+    // SEGUNDO: Si no hay asignación de turno, buscar en asignaciones permanentes
     const miUnidad = await SalidaModel.getMiUnidadAsignada(req.user.userId);
 
-    if (!miUnidad) {
+    // Determinar qué unidad usar
+    let unidadId: number | null = null;
+    let rutaInicialId: number | null = null;
+
+    if (asignacionTurno) {
+      // Usar asignación del turno
+      unidadId = asignacionTurno.unidad_id;
+      // Usar la ruta del turno si no se especifica otra
+      rutaInicialId = asignacionTurno.ruta_id || null;
+    } else if (miUnidad) {
+      // Usar asignación permanente
+      unidadId = miUnidad.unidad_id;
+    }
+
+    if (!unidadId) {
       return res.status(404).json({
-        error: 'No tienes unidad asignada'
+        error: 'No tienes unidad asignada',
+        message: 'No tienes asignación de turno ni asignación permanente. Contacta a Operaciones.'
       });
     }
 
@@ -182,14 +202,23 @@ export async function iniciarSalida(req: Request, res: Response) {
       observaciones_salida
     } = req.body;
 
-    // Iniciar salida
+    // Iniciar salida (usar ruta del body si se especifica, sino la del turno)
     const salidaId = await SalidaModel.iniciarSalida({
-      unidad_id: miUnidad.unidad_id,
-      ruta_inicial_id,
+      unidad_id: unidadId,
+      ruta_inicial_id: ruta_inicial_id || rutaInicialId,
       km_inicial,
       combustible_inicial,
       observaciones_salida
     });
+
+    // Si hay asignación de turno, marcar la salida real
+    if (asignacionTurno) {
+      try {
+        await TurnoModel.marcarSalida(asignacionTurno.asignacion_id);
+      } catch (e) {
+        console.log('No se pudo marcar salida en turno:', e);
+      }
+    }
 
     // Obtener info de la salida creada
     const salida = await SalidaModel.getSalidaById(salidaId);
@@ -198,6 +227,11 @@ export async function iniciarSalida(req: Request, res: Response) {
       message: 'Salida iniciada exitosamente',
       salida_id: salidaId,
       salida,
+      asignacion_turno: asignacionTurno ? {
+        turno_id: asignacionTurno.turno_id,
+        fecha: asignacionTurno.fecha,
+        ruta: asignacionTurno.ruta_codigo
+      } : null,
       instruccion: 'Ahora debes registrar SALIDA_SEDE como primera situación'
     });
   } catch (error: any) {
@@ -446,6 +480,106 @@ export async function getRelevos(req: Request, res: Response) {
     });
   } catch (error) {
     console.error('Error en getRelevos:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
+/**
+ * PATCH /api/salidas/editar-datos-salida
+ * Editar kilometraje y combustible de la salida activa
+ */
+export async function editarDatosSalida(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'No autorizado' });
+    }
+
+    const { km_inicial, combustible_inicial, combustible_inicial_fraccion } = req.body;
+
+    if (km_inicial === undefined && combustible_inicial === undefined && combustible_inicial_fraccion === undefined) {
+      return res.status(400).json({
+        error: 'Debes proporcionar al menos un campo para editar',
+        campos_permitidos: ['km_inicial', 'combustible_inicial', 'combustible_inicial_fraccion']
+      });
+    }
+
+    // Obtener salida activa
+    const miSalida = await SalidaModel.getMiSalidaActiva(req.user.userId);
+
+    if (!miSalida) {
+      return res.status(404).json({
+        error: 'No tienes salida activa para editar'
+      });
+    }
+
+    // Validar combustible si se proporciona
+    if (combustible_inicial !== undefined) {
+      const nivelesValidos = [0, 1, 2, 3, 4];
+      if (!nivelesValidos.includes(combustible_inicial)) {
+        return res.status(400).json({
+          error: 'Nivel de combustible inválido',
+          niveles_validos: nivelesValidos
+        });
+      }
+    }
+
+    // Validar fracción de combustible si se proporciona
+    if (combustible_inicial_fraccion !== undefined) {
+      const fraccionesValidas = ['VACIO', '1/4', '1/2', '3/4', 'LLENO'];
+      if (!fraccionesValidas.includes(combustible_inicial_fraccion)) {
+        return res.status(400).json({
+          error: 'Fracción de combustible inválida',
+          fracciones_validas: fraccionesValidas
+        });
+      }
+    }
+
+    // Construir query de actualización
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (km_inicial !== undefined) {
+      updates.push(`km_salida = $${paramCount}`);
+      values.push(km_inicial);
+      paramCount++;
+    }
+
+    if (combustible_inicial !== undefined) {
+      updates.push(`combustible_salida = $${paramCount}`);
+      values.push(combustible_inicial);
+      paramCount++;
+    }
+
+    if (combustible_inicial_fraccion !== undefined) {
+      updates.push(`combustible_salida_fraccion = $${paramCount}`);
+      values.push(combustible_inicial_fraccion);
+      paramCount++;
+    }
+
+    values.push(miSalida.salida_id);
+
+    const query = `
+      UPDATE salidas
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING *
+    `;
+
+    const pool = require('../config/database').default;
+    await pool.query(query, values);
+
+    console.log(`✏️ [SALIDA] Datos editados por usuario ${req.user.userId}: km=${km_inicial}, combustible=${combustible_inicial}`);
+
+    // Obtener salida actualizada completa
+    const salidaActualizada = await SalidaModel.getMiSalidaActiva(req.user.userId);
+
+    return res.json({
+      message: 'Datos de salida actualizados exitosamente',
+      salida: salidaActualizada
+    });
+  } catch (error) {
+    console.error('Error en editarDatosSalida:', error);
     return res.status(500).json({ error: 'Error interno del servidor' });
   }
 }

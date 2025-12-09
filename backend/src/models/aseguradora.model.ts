@@ -19,6 +19,15 @@ export interface CreateAseguradoraDTO {
 }
 
 export const AseguradoraModel = {
+  // Obtener o crear aseguradora (getOrCreate)
+  async getOrCreate(data: CreateAseguradoraDTO): Promise<Aseguradora> {
+    const existing = await this.findByNombre(data.nombre);
+    if (existing) {
+      return existing;
+    }
+    return this.upsert(data);
+  },
+
   // Buscar por nombre
   async findByNombre(nombre: string): Promise<Aseguradora | null> {
     return db.oneOrNone(
@@ -57,6 +66,43 @@ export const AseguradoraModel = {
        ORDER BY nombre ASC`,
       []
     );
+  },
+
+  // Obtener historial de incidentes de la aseguradora
+  async getHistorial(aseguradoraId: number): Promise<any[]> {
+    return db.manyOrNone(
+      `SELECT
+        i.*,
+        th.nombre as tipo_hecho_nombre,
+        r.codigo as ruta_codigo,
+        r.nombre as ruta_nombre,
+        iv.numero_poliza,
+        v.placa as vehiculo_placa,
+        u.nombre_completo as reportado_por
+       FROM incidente i
+       JOIN incidente_vehiculo iv ON i.id = iv.incidente_id
+       JOIN aseguradora a ON iv.aseguradora_id = a.id
+       LEFT JOIN vehiculo v ON iv.vehiculo_id = v.id
+       LEFT JOIN tipo_hecho th ON i.tipo_hecho_id = th.id
+       LEFT JOIN ruta r ON i.ruta_id = r.id
+       LEFT JOIN usuario u ON i.created_by = u.id
+       WHERE a.id = $1
+       ORDER BY i.created_at DESC`,
+      [aseguradoraId]
+    );
+  },
+
+  // Actualizar datos de la aseguradora
+  async update(aseguradoraId: number, data: Partial<CreateAseguradoraDTO>): Promise<Aseguradora | null> {
+    const existing = await this.findById(aseguradoraId);
+    if (!existing) {
+      return null;
+    }
+
+    return this.upsert({
+      nombre: data.nombre || existing.nombre,
+      ...data
+    } as CreateAseguradoraDTO);
   },
 
   // Buscar aseguradoras con más incidentes

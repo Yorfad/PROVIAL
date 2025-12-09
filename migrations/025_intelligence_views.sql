@@ -2,9 +2,176 @@
 -- Migración 025: Vistas Materializadas de Inteligencia
 -- ========================================
 -- Objetivo: Crear vistas materializadas para análisis y alertas inteligentes
+-- Actualizado: 2025-12-07 - Sistema completo de detección de reincidencias
 
 -- ========================================
--- 1. VEHÍCULOS REINCIDENTES
+-- 1. VISTA MATERIALIZADA: HISTORIAL COMPLETO DE VEHÍCULOS
+-- ========================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_vehiculo_historial AS
+SELECT
+    v.id,
+    v.placa,
+    v.es_extranjero,
+    tv.nombre as tipo_vehiculo,
+    m.nombre as marca,
+    v.color,
+    v.total_incidentes,
+    v.primer_incidente,
+    v.ultimo_incidente,
+
+    -- Calcular días desde el primer incidente
+    CASE
+        WHEN v.primer_incidente IS NOT NULL
+        THEN EXTRACT(DAY FROM (NOW() - v.primer_incidente))::INTEGER
+        ELSE NULL
+    END as dias_desde_primer_incidente,
+
+    -- Calcular días desde el último incidente
+    CASE
+        WHEN v.ultimo_incidente IS NOT NULL
+        THEN EXTRACT(DAY FROM (NOW() - v.ultimo_incidente))::INTEGER
+        ELSE NULL
+    END as dias_desde_ultimo_incidente,
+
+    -- Nivel de alerta según especificación: >=5 incidentes=ALTO, >=2=MEDIO, <2=BAJO
+    CASE
+        WHEN v.total_incidentes >= 5 THEN 'ALTO'
+        WHEN v.total_incidentes >= 2 THEN 'MEDIO'
+        ELSE 'BAJO'
+    END as nivel_alerta,
+
+    -- Array JSON con todos los incidentes
+    COALESCE(
+        json_agg(
+            json_build_object(
+                'incidente_id', i.id,
+                'fecha', i.created_at,
+                'tipo_hecho', th.nombre,
+                'km', i.km,
+                'ruta_codigo', r.codigo,
+                'ruta_nombre', r.nombre,
+                'municipio', m.nombre,
+                'estado_piloto', iv.estado_piloto,
+                'cantidad_heridos', i.cantidad_heridos,
+                'cantidad_fallecidos', i.cantidad_fallecidos
+            ) ORDER BY i.created_at DESC
+        ) FILTER (WHERE i.id IS NOT NULL),
+        '[]'::json
+    ) as incidentes
+
+FROM vehiculo v
+LEFT JOIN tipo_vehiculo tv ON v.tipo_vehiculo_id = tv.id
+LEFT JOIN marca_vehiculo m ON v.marca_id = m.id
+LEFT JOIN incidente_vehiculo iv ON v.id = iv.vehiculo_id
+LEFT JOIN incidente i ON iv.incidente_id = i.id
+LEFT JOIN tipo_hecho th ON i.tipo_hecho_id = th.id
+LEFT JOIN ruta r ON i.ruta_id = r.id
+LEFT JOIN municipio mun ON i.municipio_id = mun.id
+GROUP BY v.id, tv.nombre, m.nombre
+ORDER BY v.total_incidentes DESC, v.ultimo_incidente DESC;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_vehiculo_historial_id ON mv_vehiculo_historial (id);
+CREATE INDEX IF NOT EXISTS idx_mv_vehiculo_historial_placa ON mv_vehiculo_historial (placa);
+CREATE INDEX IF NOT EXISTS idx_mv_vehiculo_historial_nivel ON mv_vehiculo_historial (nivel_alerta);
+
+COMMENT ON MATERIALIZED VIEW mv_vehiculo_historial IS 'Historial completo de vehículos con todos sus incidentes';
+
+-- ========================================
+-- 2. VISTA MATERIALIZADA: HISTORIAL COMPLETO DE PILOTOS
+-- ========================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_piloto_historial AS
+SELECT
+    p.id,
+    p.nombre,
+    p.licencia_tipo,
+    p.licencia_numero,
+    p.licencia_vencimiento,
+    p.total_incidentes,
+    p.total_sanciones,
+    p.primer_incidente,
+    p.ultimo_incidente,
+
+    -- Calcular edad aproximada
+    CASE
+        WHEN p.fecha_nacimiento IS NOT NULL
+        THEN EXTRACT(YEAR FROM AGE(p.fecha_nacimiento))::INTEGER
+        ELSE NULL
+    END as edad,
+
+    -- Verificar si la licencia está vencida
+    CASE
+        WHEN p.licencia_vencimiento IS NOT NULL AND p.licencia_vencimiento < NOW()
+        THEN true
+        ELSE false
+    END as licencia_vencida,
+
+    -- Días hasta vencimiento (negativo si ya venció)
+    CASE
+        WHEN p.licencia_vencimiento IS NOT NULL
+        THEN (p.licencia_vencimiento - NOW()::DATE)::INTEGER
+        ELSE NULL
+    END as dias_hasta_vencimiento,
+
+    -- Nivel de alerta según especificación
+    CASE
+        WHEN p.total_incidentes >= 5 OR p.total_sanciones >= 5 THEN 'ALTO'
+        WHEN p.total_incidentes >= 2 OR p.total_sanciones >= 2 THEN 'MEDIO'
+        ELSE 'BAJO'
+    END as nivel_alerta,
+
+    -- Array JSON con todos los incidentes
+    COALESCE(
+        json_agg(
+            json_build_object(
+                'incidente_id', i.id,
+                'fecha', i.created_at,
+                'tipo_hecho', th.nombre,
+                'km', i.km,
+                'ruta_codigo', r.codigo,
+                'placa_vehiculo', v.placa,
+                'estado_piloto', iv.estado_piloto
+            ) ORDER BY i.created_at DESC
+        ) FILTER (WHERE i.id IS NOT NULL),
+        '[]'::json
+    ) as incidentes,
+
+    -- Array JSON con todas las sanciones
+    COALESCE(
+        json_agg(
+            DISTINCT json_build_object(
+                'sancion_id', s.id,
+                'fecha', s.created_at,
+                'articulo', a.numero,
+                'descripcion', s.descripcion,
+                'monto', s.monto,
+                'pagada', s.pagada
+            ) ORDER BY s.created_at DESC
+        ) FILTER (WHERE s.id IS NOT NULL),
+        '[]'::json
+    ) as sanciones
+
+FROM piloto p
+LEFT JOIN incidente_vehiculo iv ON p.id = iv.piloto_id
+LEFT JOIN incidente i ON iv.incidente_id = i.id
+LEFT JOIN vehiculo v ON iv.vehiculo_id = v.id
+LEFT JOIN tipo_hecho th ON i.tipo_hecho_id = th.id
+LEFT JOIN ruta r ON i.ruta_id = r.id
+LEFT JOIN sancion s ON p.id = s.piloto_id
+LEFT JOIN articulo_sancion a ON s.articulo_sancion_id = a.id
+GROUP BY p.id
+ORDER BY p.total_incidentes DESC, p.total_sanciones DESC, p.ultimo_incidente DESC;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_piloto_historial_id ON mv_piloto_historial (id);
+CREATE INDEX IF NOT EXISTS idx_mv_piloto_historial_licencia ON mv_piloto_historial (licencia_numero);
+CREATE INDEX IF NOT EXISTS idx_mv_piloto_historial_nivel ON mv_piloto_historial (nivel_alerta);
+CREATE INDEX IF NOT EXISTS idx_mv_piloto_historial_vencida ON mv_piloto_historial (licencia_vencida) WHERE licencia_vencida = true;
+
+COMMENT ON MATERIALIZED VIEW mv_piloto_historial IS 'Historial completo de pilotos con todos sus incidentes y sanciones';
+
+-- ========================================
+-- 3. VEHÍCULOS REINCIDENTES (vista simplificada para top 10)
 -- ========================================
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_vehiculos_reincidentes AS
@@ -237,6 +404,11 @@ COMMENT ON MATERIALIZED VIEW mv_tendencias_temporales IS 'Análisis temporal de 
 CREATE OR REPLACE FUNCTION refresh_intelligence_views()
 RETURNS VOID AS $$
 BEGIN
+    -- Refrescar vistas principales con historial completo
+    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_vehiculo_historial;
+    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_piloto_historial;
+
+    -- Refrescar vistas simplificadas
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_vehiculos_reincidentes;
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pilotos_problematicos;
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_puntos_calientes;
@@ -244,7 +416,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION refresh_intelligence_views IS 'Refresca todas las vistas materializadas de inteligencia';
+COMMENT ON FUNCTION refresh_intelligence_views IS 'Refresca todas las vistas materializadas de inteligencia (incluyendo mv_vehiculo_historial y mv_piloto_historial)';
 
 -- ========================================
 -- 6. TRIGGER PARA AUTO-REFRESH (OPCIONAL)

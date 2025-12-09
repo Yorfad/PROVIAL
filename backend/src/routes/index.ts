@@ -10,9 +10,15 @@ import geografiaRoutes from './geografia.routes';
 import salidaRoutes from './salida.routes';
 import ingresoRoutes from './ingreso.routes';
 import sedeRoutes from './sede.routes';
+import reasignacionRoutes from './reasignacion.routes';
 import intelligenceRoutes from './intelligence.routes';
 import operacionesRoutes from './operaciones.routes';
 import generadorTurnosRoutes from './generador-turnos.routes';
+import asignacionesRoutes from './asignaciones';
+import solicitudesSalidaRoutes from './solicitudesSalida';
+import testModeRoutes from './testMode.routes';
+import brigadasRoutes from './brigadas.routes';
+import unidadesRoutes from './unidades.routes';
 
 const router = Router();
 
@@ -46,8 +52,11 @@ router.use('/salidas', salidaRoutes);
 // Rutas de ingresos a sede
 router.use('/ingresos', ingresoRoutes);
 
-// Rutas de sedes y reasignaciones
+// Rutas de sedes
 router.use('/sedes', sedeRoutes);
+
+// Rutas de reasignaciones entre sedes
+router.use('/reasignaciones', reasignacionRoutes);
 
 // Rutas de inteligencia y análisis
 router.use('/intelligence', intelligenceRoutes);
@@ -57,6 +66,21 @@ router.use('/operaciones', operacionesRoutes);
 
 // Rutas del generador automático de turnos
 router.use('/generador-turnos', generadorTurnosRoutes);
+
+// Rutas de asignaciones programadas (protocolos de salida)
+router.use('/asignaciones', asignacionesRoutes);
+
+// Rutas de solicitudes de salida y autorizaciones
+router.use('/solicitudes-salida', solicitudesSalidaRoutes);
+
+// Rutas de modo de pruebas (eliminación de datos de testing)
+router.use('/test-mode', testModeRoutes);
+
+// Rutas de gestión de brigadas
+router.use('/brigadas', brigadasRoutes);
+
+// Rutas de gestión de unidades
+router.use('/unidades', unidadesRoutes);
 
 // TODO: Agregar más rutas aquí
 // router.use('/catalogos', catalogosRoutes);

@@ -1,22 +1,88 @@
+# Dependencies
 node_modules/
-.expo/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
 dist/
 web-build/
-.env
+
+# Misc
 .DS_Store
-*.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.idea/
+logs/
+*.log
+
+# Backend
+backend/dist/
+backend/uploads/
+# backend/.env
+# NO ignorar los templates de configuración
+!backend/.env.pc1
+!backend/.env.pc2
+!backend/.env.example
+
+# Mobile
+mobile/.expo/
+mobile/.expo-shared/
+mobile/dist/
+# Ignorar config.ts activo pero no los templates
+mobile/src/constants/config.ts
+!mobile/src/constants/config.pc1.ts
+!mobile/src/constants/config.pc2.ts
+
+# Web
+web/.cache/
+web/dist/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker volumes
+postgres_data/
+redis_data/
+pgadmin_data/
+
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
-coverage/
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Backups
+*.sql
+!migrations/*.sql
+backup_*.sql
+
+# Configuración de PC actual
+.pc-config
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.expo/
 .docusaurus/
 .cache/
 tmp/
-
 backend/nul
-
 **/nul

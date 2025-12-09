@@ -61,12 +61,14 @@ export interface MiAsignacionHoy {
   nombre_completo: string;
   turno_id: number;
   fecha: string;
+  fecha_fin: string | null;
   turno_estado: string;
   asignacion_id: number;
   unidad_id: number;
   unidad_codigo: string;
   tipo_unidad: string;
   mi_rol: string;
+  ruta_id: number | null;
   ruta_codigo: string | null;
   ruta_nombre: string | null;
   km_inicio: number | null;
@@ -75,7 +77,9 @@ export interface MiAsignacionHoy {
   acciones: string | null;
   hora_salida: string | null;
   hora_entrada_estimada: string | null;
-  companeros: Array<{ nombre: string; rol: string }> | null;
+  hora_salida_real: string | null;
+  dias_para_salida: number;
+  companeros: Array<{ usuario_id: number; nombre: string; chapa: string; rol: string; telefono: string | null }> | null;
 }
 
 export const TurnoModel = {
@@ -95,12 +99,12 @@ export const TurnoModel = {
   },
 
   // Crear turno
-  async create(data: { fecha: string; observaciones?: string; creado_por: number }): Promise<Turno> {
+  async create(data: { fecha: string; fecha_fin?: string | null; observaciones?: string; creado_por: number }): Promise<Turno> {
     return db.one(
-      `INSERT INTO turno (fecha, estado, observaciones, creado_por)
-       VALUES ($1, 'PLANIFICADO', $2, $3)
+      `INSERT INTO turno (fecha, fecha_fin, estado, observaciones, creado_por)
+       VALUES ($1, $2, 'PLANIFICADO', $3, $4)
        RETURNING *`,
-      [data.fecha, data.observaciones, data.creado_por]
+      [data.fecha, data.fecha_fin || null, data.observaciones, data.creado_por]
     );
   },
 
@@ -284,5 +288,83 @@ export const TurnoModel = {
        RETURNING *`,
       [data.asignacion_id, data.combustible, data.tipo, data.observaciones, data.registrado_por]
     );
+  },
+
+  // Obtener asignación por ID
+  async getAsignacionById(id: number): Promise<AsignacionUnidad | null> {
+    return db.oneOrNone(
+      'SELECT * FROM asignacion_unidad WHERE id = $1',
+      [id]
+    );
+  },
+
+  // Actualizar asignación
+  async updateAsignacion(id: number, data: {
+    ruta_id?: number;
+    km_inicio?: number;
+    km_final?: number;
+    sentido?: string;
+    acciones?: string;
+    hora_salida?: string;
+    hora_entrada_estimada?: string;
+  }): Promise<AsignacionUnidad> {
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 0;
+
+    if (data.ruta_id !== undefined) {
+      updates.push(`ruta_id = $${++paramCount}`);
+      values.push(data.ruta_id);
+    }
+    if (data.km_inicio !== undefined) {
+      updates.push(`km_inicio = $${++paramCount}`);
+      values.push(data.km_inicio);
+    }
+    if (data.km_final !== undefined) {
+      updates.push(`km_final = $${++paramCount}`);
+      values.push(data.km_final);
+    }
+    if (data.sentido !== undefined) {
+      updates.push(`sentido = $${++paramCount}`);
+      values.push(data.sentido);
+    }
+    if (data.acciones !== undefined) {
+      updates.push(`acciones = $${++paramCount}`);
+      values.push(data.acciones);
+    }
+    if (data.hora_salida !== undefined) {
+      updates.push(`hora_salida = $${++paramCount}`);
+      values.push(data.hora_salida);
+    }
+    if (data.hora_entrada_estimada !== undefined) {
+      updates.push(`hora_entrada_estimada = $${++paramCount}`);
+      values.push(data.hora_entrada_estimada);
+    }
+
+    if (updates.length === 0) {
+      // Si no hay nada que actualizar, devolver la asignación actual
+      return this.getAsignacionById(id) as Promise<AsignacionUnidad>;
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(id);
+
+    return db.one(
+      `UPDATE asignacion_unidad
+       SET ${updates.join(', ')}
+       WHERE id = $${paramCount + 1}
+       RETURNING *`,
+      values
+    );
+  },
+
+  // Eliminar asignación
+  async deleteAsignacion(id: number): Promise<void> {
+    await db.none('DELETE FROM asignacion_unidad WHERE id = $1', [id]);
+  },
+
+  // Eliminar tripulación de una asignación
+  async deleteTripulacion(asignacionId: number): Promise<void> {
+    await db.none('DELETE FROM tripulacion_turno WHERE asignacion_id = $1', [asignacionId]);
   },
 };

@@ -14,28 +14,60 @@ import { COLORS } from '../../constants/colors';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { API_URL } from '../../constants/config';
+import FuelSelector from '../../components/FuelSelector';
+import { turnosAPI } from '../../services/api';
 
 export default function IniciarSalidaScreen() {
   const navigation = useNavigation();
   const { asignacion, salidaActiva, refreshEstadoBrigada } = useAuthStore();
 
   const [kmSalida, setKmSalida] = useState('');
-  const [combustibleSalida, setCombustibleSalida] = useState('');
+  const [combustibleFraccion, setCombustibleFraccion] = useState<string | null>(null);
+  const [combustibleDecimal, setCombustibleDecimal] = useState<number>(0);
   const [observaciones, setObservaciones] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Asignacion de turno (sistema nuevo)
+  const [asignacionTurno, setAsignacionTurno] = useState<any>(null);
+  const [loadingAsignacion, setLoadingAsignacion] = useState(true);
+
+  const handleCombustibleChange = (fraccion: string, decimal: number) => {
+    setCombustibleFraccion(fraccion);
+    setCombustibleDecimal(decimal);
+  };
+
+  // Cargar asignacion de turno al montar
+  useEffect(() => {
+    const loadAsignacionTurno = async () => {
+      try {
+        setLoadingAsignacion(true);
+        const data = await turnosAPI.getMiAsignacionHoy();
+        setAsignacionTurno(data);
+      } catch (error) {
+        console.log('[INICIAR SALIDA] No hay asignacion de turno');
+        setAsignacionTurno(null);
+      } finally {
+        setLoadingAsignacion(false);
+      }
+    };
+    loadAsignacionTurno();
+  }, []);
 
   useEffect(() => {
     // Verificar si ya tiene salida activa
     if (salidaActiva) {
       Alert.alert(
         'Salida Activa',
-        'Ya tienes una salida activa. Debes finalizar el día antes de iniciar una nueva salida.',
+        'Ya tienes una salida activa. Debes finalizar el dia antes de iniciar una nueva salida.',
         [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]
       );
     }
   }, [salidaActiva]);
+
+  // La asignacion efectiva es la de turno o la permanente
+  const asignacionEfectiva = asignacionTurno || asignacion;
 
   const handleIniciarSalida = async () => {
     // Validar campos
@@ -44,21 +76,15 @@ export default function IniciarSalidaScreen() {
       return;
     }
 
-    if (!combustibleSalida.trim()) {
-      Alert.alert('Error', 'Debes ingresar el nivel de combustible');
+    if (!combustibleFraccion) {
+      Alert.alert('Error', 'Debes seleccionar el nivel de combustible');
       return;
     }
 
     const kmNum = parseFloat(kmSalida);
-    const combustibleNum = parseFloat(combustibleSalida);
 
     if (isNaN(kmNum) || kmNum < 0) {
       Alert.alert('Error', 'El kilometraje debe ser un número válido');
-      return;
-    }
-
-    if (isNaN(combustibleNum) || combustibleNum < 0 || combustibleNum > 100) {
-      Alert.alert('Error', 'El combustible debe estar entre 0 y 100');
       return;
     }
 
@@ -67,7 +93,8 @@ export default function IniciarSalidaScreen() {
 
       const response = await axios.post(`${API_URL}/salidas/iniciar`, {
         km_salida: kmNum,
-        combustible_salida: combustibleNum,
+        combustible_salida: combustibleDecimal,
+        combustible_fraccion: combustibleFraccion,
         observaciones: observaciones.trim() || undefined,
       });
 
@@ -95,14 +122,27 @@ export default function IniciarSalidaScreen() {
     }
   };
 
-  if (!asignacion) {
+  // Mostrar loading mientras carga asignacion de turno
+  if (loadingAsignacion) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ marginTop: 16, color: COLORS.text.secondary }}>
+          Verificando asignacion...
+        </Text>
+      </View>
+    );
+  }
+
+  // Mostrar error si no hay ninguna asignacion (ni turno ni permanente)
+  if (!asignacionEfectiva) {
     return (
       <View style={styles.container}>
         <View style={styles.errorCard}>
           <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorTitle}>Sin Asignación</Text>
+          <Text style={styles.errorTitle}>Sin Asignacion</Text>
           <Text style={styles.errorText}>
-            No tienes una unidad asignada. Contacta a tu encargado de sede para que te asigne una unidad.
+            No tienes una unidad asignada para hoy. Contacta a Operaciones para que te asignen.
           </Text>
           <TouchableOpacity
             style={styles.backButton}
@@ -128,19 +168,39 @@ export default function IniciarSalidaScreen() {
       {/* Card de Unidad Asignada */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Tu Unidad Asignada</Text>
+        {/* Indicador si es asignacion de turno */}
+        {asignacionTurno && (
+          <View style={[styles.tipoBadge, { backgroundColor: asignacionTurno.dias_para_salida === 0 ? COLORS.success : COLORS.info }]}>
+            <Text style={styles.tipoBadgeText}>
+              {asignacionTurno.dias_para_salida === 0 ? 'TURNO DE HOY' : asignacionTurno.dias_para_salida === 1 ? 'TURNO DE MANANA' : `EN ${asignacionTurno.dias_para_salida} DIAS`}
+            </Text>
+          </View>
+        )}
         <View style={styles.unidadInfo}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Unidad:</Text>
-            <Text style={styles.infoValue}>{asignacion.unidad_codigo}</Text>
+            <Text style={styles.infoValue}>
+              {asignacionEfectiva.unidad_codigo || asignacionEfectiva.codigo}
+            </Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Tipo:</Text>
-            <Text style={styles.infoValue}>{asignacion.tipo_unidad}</Text>
+            <Text style={styles.infoValue}>
+              {asignacionEfectiva.tipo_unidad || 'N/A'}
+            </Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Tu Rol:</Text>
-            <Text style={styles.infoValue}>{asignacion.rol_tripulacion}</Text>
+            <Text style={styles.infoValue}>
+              {asignacionEfectiva.mi_rol || asignacionEfectiva.rol_tripulacion || 'N/A'}
+            </Text>
           </View>
+          {asignacionTurno?.ruta_codigo && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Ruta:</Text>
+              <Text style={styles.infoValue}>{asignacionTurno.ruta_codigo}</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -164,18 +224,12 @@ export default function IniciarSalidaScreen() {
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>
-            Nivel de Combustible (%) <Text style={styles.required}>*</Text>
-          </Text>
-          <TextInput
-            style={styles.input}
-            value={combustibleSalida}
-            onChangeText={setCombustibleSalida}
-            placeholder="Ej: 75"
-            keyboardType="decimal-pad"
-            editable={!loading}
+          <FuelSelector
+            value={combustibleFraccion}
+            onChange={handleCombustibleChange}
+            label="Nivel de Combustible"
+            required
           />
-          <Text style={styles.hint}>Porcentaje de combustible (0-100)</Text>
         </View>
 
         <View style={styles.formGroup}>
@@ -404,6 +458,18 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: COLORS.white,
     fontSize: 16,
+    fontWeight: '600',
+  },
+  tipoBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  tipoBadgeText: {
+    color: COLORS.white,
+    fontSize: 12,
     fontWeight: '600',
   },
 });

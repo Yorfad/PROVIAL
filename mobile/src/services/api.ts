@@ -1,16 +1,16 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from '../constants/config';
 
-// IMPORTANTE: Cambiar esta URL a la IP de tu computadora
-// Para encontrar tu IP: ipconfig (Windows) o ifconfig (Mac/Linux)
-const API_URL = 'http://172.20.10.4:3000/api'; // <-- CAMBIAR ESTA IP
+// API_URL viene de config.ts (actualmente: 192.168.10.105:3001)
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 10000,
+  timeout: 30000, // Aumentado a 30 segundos
   headers: {
     'Content-Type': 'application/json',
   },
+  validateStatus: (status) => status < 500, // Aceptar respuestas 4xx
 });
 
 // Interceptor para agregar token

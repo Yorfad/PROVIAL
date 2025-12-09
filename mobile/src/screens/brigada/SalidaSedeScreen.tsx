@@ -13,12 +13,12 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../constants/colors';
 import { useAuthStore } from '../../store/authStore';
 import RutaSelector from '../../components/RutaSelector';
-import CombustibleSelector from '../../components/CombustibleSelector';
+import FuelSelector from '../../components/FuelSelector';
 import { useSituacionesStore } from '../../store/situacionesStore';
 
 export default function SalidaSedeScreen() {
     const navigation = useNavigation();
-    const { asignacion } = useAuthStore();
+    const { asignacion, salidaActiva } = useAuthStore();
     const { createSituacion } = useSituacionesStore();
 
     const [rutaId, setRutaId] = useState<number | undefined>(asignacion?.ruta_asignada_id);
@@ -54,8 +54,7 @@ export default function SalidaSedeScreen() {
             ruta_id: rutaId,
             km: parseFloat(kmInicial),
             unidad_id: asignacion?.unidad_id,
-            turno_id: asignacion?.turno_id,
-            asignacion_id: asignacion?.asignacion_id,
+            salida_unidad_id: salidaActiva?.salida_id,
             descripcion: `Salida de sede - Inicio de patrullaje`,
             observaciones,
             combustible: combustibleDecimal,
@@ -124,10 +123,10 @@ export default function SalidaSedeScreen() {
 
                 {/* Combustible */}
                 <View style={styles.section}>
-                    <CombustibleSelector
-                        value={combustibleFraccion || undefined}
+                    <FuelSelector
+                        value={combustibleFraccion}
                         onChange={handleCombustibleChange}
-                        label="Nivel de Combustible *"
+                        label="Nivel de Combustible"
                         required
                     />
                 </View>

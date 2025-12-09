@@ -14,15 +14,22 @@ import { COLORS } from '../../constants/colors';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { API_URL } from '../../constants/config';
+import FuelSelector from '../../components/FuelSelector';
 
 export default function SalidaDeSedeScreen() {
   const navigation = useNavigation();
   const { ingresoActivo, refreshEstadoBrigada } = useAuthStore();
 
   const [kmSalida, setKmSalida] = useState('');
-  const [combustibleSalida, setCombustibleSalida] = useState('');
+  const [combustibleFraccion, setCombustibleFraccion] = useState<string | null>(null);
+  const [combustibleDecimal, setCombustibleDecimal] = useState<number>(0);
   const [observaciones, setObservaciones] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleCombustibleChange = (fraccion: string, decimal: number) => {
+    setCombustibleFraccion(fraccion);
+    setCombustibleDecimal(decimal);
+  };
 
   const formatFecha = (fecha: string) => {
     const date = new Date(fecha);
@@ -73,13 +80,9 @@ export default function SalidaDeSedeScreen() {
       data.km_salida = kmNum;
     }
 
-    if (combustibleSalida.trim()) {
-      const combustibleNum = parseFloat(combustibleSalida);
-      if (isNaN(combustibleNum) || combustibleNum < 0 || combustibleNum > 100) {
-        Alert.alert('Error', 'El combustible debe estar entre 0 y 100');
-        return;
-      }
-      data.combustible_salida = combustibleNum;
+    if (combustibleFraccion) {
+      data.combustible_salida = combustibleDecimal;
+      data.combustible_fraccion = combustibleFraccion;
     }
 
     if (observaciones.trim()) {
@@ -229,14 +232,10 @@ export default function SalidaDeSedeScreen() {
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Nivel de Combustible (%)</Text>
-          <TextInput
-            style={styles.input}
-            value={combustibleSalida}
-            onChangeText={setCombustibleSalida}
-            placeholder="Ej: 95"
-            keyboardType="decimal-pad"
-            editable={!loading}
+          <FuelSelector
+            value={combustibleFraccion}
+            onChange={handleCombustibleChange}
+            label="Nivel de Combustible"
           />
           <Text style={styles.hint}>
             Registra especialmente si cargaste combustible

@@ -12,6 +12,7 @@ import {
   getSalida,
   getUnidadesEnSalida,
   getHistorialSalidas,
+  editarDatosSalida,
   // Relevos
   registrarRelevo,
   getRelevos
@@ -45,6 +46,9 @@ router.post('/iniciar', authenticate, authorize('BRIGADA'), iniciarSalida);
 
 // Cambiar ruta de mi salida activa (Brigada)
 router.post('/cambiar-ruta', authenticate, authorize('BRIGADA'), cambiarRuta);
+
+// Editar datos de salida (km y combustible iniciales) (Brigada)
+router.patch('/editar-datos-salida', authenticate, authorize('BRIGADA'), editarDatosSalida);
 
 // Finalizar salida (Brigada, COP, Operaciones, Admin)
 router.post('/:id/finalizar', authenticate, authorize('BRIGADA', 'COP', 'OPERACIONES', 'ADMIN'), finalizarSalida);

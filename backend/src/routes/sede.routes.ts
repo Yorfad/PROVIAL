@@ -4,12 +4,9 @@ import {
   getSede,
   getUnidadesDeSede,
   getPersonalDeSede,
-  getMiSede,
-  crearReasignacion,
-  getReasignacionesActivas,
-  finalizarReasignacion
+  getMiSede
 } from '../controllers/sede.controller';
-import { authenticate, authorize } from '../middlewares/auth';
+import { authenticate } from '../middlewares/auth';
 
 const router = Router();
 
@@ -31,18 +28,5 @@ router.get('/:id/unidades', authenticate, getUnidadesDeSede);
 
 // Obtener personal de una sede
 router.get('/:id/personal', authenticate, getPersonalDeSede);
-
-// ========================================
-// REASIGNACIONES
-// ========================================
-
-// Obtener reasignaciones activas
-router.get('/reasignaciones/activas', authenticate, getReasignacionesActivas);
-
-// Crear reasignación (requiere permisos sobre sede origen)
-router.post('/reasignaciones', authenticate, authorize('OPERACIONES', 'COP'), crearReasignacion);
-
-// Finalizar reasignación
-router.post('/reasignaciones/:id/finalizar', authenticate, authorize('OPERACIONES', 'COP'), finalizarReasignacion);
 
 export default router;
